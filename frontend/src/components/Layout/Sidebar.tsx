@@ -70,12 +70,10 @@ export default function Sidebar({ drawerWidth, mobileOpen, desktopOpen, onClose,
 
   const drawer = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Toolbar>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="h6" noWrap component="div" fontWeight={600}>
-            UDX710
-          </Typography>
-        </Box>
+      <Toolbar sx={{ px: 3, minHeight: 64 }}>
+        <Typography variant="h5" noWrap component="div" fontWeight={700}>
+          UDX710
+        </Typography>
       </Toolbar>
       <Divider />
       <List sx={{ flexGrow: 1 }}>
@@ -86,8 +84,9 @@ export default function Sidebar({ drawerWidth, mobileOpen, desktopOpen, onClose,
               <ListItemButton
                 selected={location.pathname === item.path}
                 onClick={() => handleNavigation(item.path)}
+                sx={{ px: 3 }}
               >
-                <ListItemIcon>
+                <ListItemIcon sx={{ minWidth: 48 }}>
                   <IconComponent />
                 </ListItemIcon>
                 <ListItemText primary={item.label} />
@@ -96,7 +95,7 @@ export default function Sidebar({ drawerWidth, mobileOpen, desktopOpen, onClose,
           )
         })}
       </List>
-      <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+      <Box sx={{ px: 3, py: 2, borderTop: 1, borderColor: 'divider' }}>
         <Link
           href="https://github.com/1orz/project-cpe"
           target="_blank"

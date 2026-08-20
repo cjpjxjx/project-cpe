@@ -37,7 +37,9 @@ import {
   MoreVert as MoreVertIcon,
   Brightness4 as DarkModeIcon,
   Brightness7 as LightModeIcon,
+  BrightnessAuto as AutoModeIcon,
   Speed as SpeedIcon,
+  Palette as PaletteIcon,
 } from '@mui/icons-material'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useRefreshInterval } from '../../contexts/RefreshContext'
@@ -55,10 +57,11 @@ export default function TopBar({
   refreshInterval,
   onRefreshIntervalChange,
 }: TopBarProps) {
-  const { mode, toggleTheme } = useTheme()
+  const { mode, setMode } = useTheme()
   const { triggerRefresh } = useRefreshInterval()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [refreshMenuAnchor, setRefreshMenuAnchor] = useState<null | HTMLElement>(null)
+  const [themeMenuAnchor, setThemeMenuAnchor] = useState<null | HTMLElement>(null)
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget)
@@ -81,22 +84,31 @@ export default function TopBar({
     handleRefreshMenuClose()
   }
 
+  const handleThemeMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setThemeMenuAnchor(event.currentTarget)
+  }
+
+  const handleThemeMenuClose = () => {
+    setThemeMenuAnchor(null)
+  }
+
+  const handleThemeModeChange = (nextMode: 'light' | 'dark' | 'auto') => {
+    setMode(nextMode)
+    handleThemeMenuClose()
+  }
+
   const handleRefresh = () => {
     triggerRefresh()
   }
 
-  const handleThemeToggle = () => {
-    toggleTheme()
-    handleMenuClose()
-  }
-
   const getRefreshLabel = () => {
     if (refreshInterval === 0) return '手动'
-    if (refreshInterval === 1000) return '1秒'
-    if (refreshInterval === 3000) return '3秒'
-    if (refreshInterval === 5000) return '5秒'
-    if (refreshInterval === 10000) return '10秒'
     return `${refreshInterval / 1000}秒`
+  }
+
+  const getThemeLabel = () => {
+    if (mode === 'auto') return '自动'
+    return mode === 'dark' ? '暗色' : '亮色'
   }
 
   return (
@@ -176,11 +188,18 @@ export default function TopBar({
           }}
         >
           {/* 主题切换 */}
-          <MenuItem onClick={handleThemeToggle}>
+          <MenuItem onClick={handleThemeMenuOpen}>
             <ListItemIcon>
-              {mode === 'dark' ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+              <PaletteIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText>{mode === 'dark' ? '浅色模式' : '深色模式'}</ListItemText>
+            <ListItemText>颜色模式</ListItemText>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ ml: 2, flexGrow: 1, textAlign: 'right' }}
+            >
+              {getThemeLabel()}
+            </Typography>
           </MenuItem>
 
           <Divider />
@@ -190,11 +209,53 @@ export default function TopBar({
             <ListItemIcon>
               <SpeedIcon fontSize="small" />
             </ListItemIcon>
-            <ListItemText
-              primary="刷新频率"
-              secondary={getRefreshLabel()}
-              secondaryTypographyProps={{ variant: 'caption' }}
-            />
+            <ListItemText>刷新频率</ListItemText>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ ml: 2, flexGrow: 1, textAlign: 'right' }}
+            >
+              {getRefreshLabel()}
+            </Typography>
+          </MenuItem>
+        </Menu>
+
+        {/* 颜色模式子菜单 */}
+        <Menu
+          anchorEl={themeMenuAnchor}
+          open={Boolean(themeMenuAnchor)}
+          onClose={handleThemeMenuClose}
+          anchorOrigin={{
+            vertical: 'top',
+            horizontal: 'left',
+          }}
+          transformOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+          }}
+          PaperProps={{
+            sx: {
+              minWidth: 150,
+            },
+          }}
+        >
+          <MenuItem selected={mode === 'auto'} onClick={() => handleThemeModeChange('auto')}>
+            <ListItemIcon>
+              <AutoModeIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>自动</ListItemText>
+          </MenuItem>
+          <MenuItem selected={mode === 'light'} onClick={() => handleThemeModeChange('light')}>
+            <ListItemIcon>
+              <LightModeIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>亮色</ListItemText>
+          </MenuItem>
+          <MenuItem selected={mode === 'dark'} onClick={() => handleThemeModeChange('dark')}>
+            <ListItemIcon>
+              <DarkModeIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>暗色</ListItemText>
           </MenuItem>
         </Menu>
 
@@ -218,18 +279,6 @@ export default function TopBar({
           }}
         >
           <MenuItem
-            selected={refreshInterval === 1000}
-            onClick={() => handleRefreshIntervalChange(1000)}
-          >
-            1秒/次
-          </MenuItem>
-          <MenuItem
-            selected={refreshInterval === 3000}
-            onClick={() => handleRefreshIntervalChange(3000)}
-          >
-            3秒/次
-          </MenuItem>
-          <MenuItem
             selected={refreshInterval === 5000}
             onClick={() => handleRefreshIntervalChange(5000)}
           >
@@ -240,6 +289,18 @@ export default function TopBar({
             onClick={() => handleRefreshIntervalChange(10000)}
           >
             10秒/次
+          </MenuItem>
+          <MenuItem
+            selected={refreshInterval === 30000}
+            onClick={() => handleRefreshIntervalChange(30000)}
+          >
+            30秒/次
+          </MenuItem>
+          <MenuItem
+            selected={refreshInterval === 60000}
+            onClick={() => handleRefreshIntervalChange(60000)}
+          >
+            60秒/次
           </MenuItem>
           <Divider />
           <MenuItem

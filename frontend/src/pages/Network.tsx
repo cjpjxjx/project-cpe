@@ -122,7 +122,7 @@ export default function NetworkPage() {
   // 网络接口状态
   const [interfaces, setInterfaces] = useState<NetworkInterfaceInfo[]>([])
   const [showDownInterfaces, setShowDownInterfaces] = useState(false)
-  const [showIpAddresses, setShowIpAddresses] = useState(false)
+  const [showIpAddresses, setShowIpAddresses] = useState(true)
   
   // 频段锁定状态
   const [currentRadioMode, setCurrentRadioMode] = useState<RadioMode>('auto')
@@ -683,9 +683,9 @@ export default function NetworkPage() {
 
       {/* Tab 4: 运营商管理 */}
       <TabPanel value={tabValue} index={3}>
-        <Grid container spacing={3}>
+        <Grid container spacing={3} alignItems="stretch">
           <Grid size={{ xs: 12, md: 6 }}>
-            <Card>
+            <Card sx={{ height: '100%' }}>
               <CardHeader
                 avatar={<Business color="primary" />}
                 title="运营商列表"
@@ -753,7 +753,7 @@ export default function NetworkPage() {
           </Grid>
 
           <Grid size={{ xs: 12, md: 6 }}>
-            <Card>
+            <Card sx={{ height: '100%' }}>
               <CardHeader
                 avatar={<Search color="primary" />}
                 title="运营商扫描"
@@ -1333,32 +1333,37 @@ export default function NetworkPage() {
                       </Typography>
                       <Divider sx={{ mb: 1 }} />
                       {iface.ip_addresses.length > 0 ? (
-                        <Stack spacing={1}>
-                          {iface.ip_addresses.map((ip: IpAddress, idx: number) => (
-                            <Box
-                              key={idx}
-                              sx={{
-                                p: 1,
-                                border: '1px solid',
-                                borderColor: 'divider',
-                                borderRadius: 1,
-                              }}
-                            >
-                              <Box display="flex" alignItems="center" gap={0.5} mb={0.5}>
-                                <Chip
-                                  icon={getScopeIcon(ip.scope)}
-                                  label={getScopeLabel(ip.scope)}
-                                  size="small"
-                                  color={getScopeColor(ip.scope)}
-                                />
-                                <Chip label={ip.ip_type.toUpperCase()} size="small" variant="outlined" />
-                              </Box>
-                              <Typography variant="body2" sx={{ fontFamily: 'monospace', ...getIpAddressStyle() }}>
-                                {ip.address}/{ip.prefix_len}
-                              </Typography>
-                            </Box>
-                          ))}
-                        </Stack>
+                        <TableContainer component={Paper} variant="outlined">
+                          <Table size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell>作用域</TableCell>
+                                <TableCell>类型</TableCell>
+                                <TableCell align="right">地址</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {iface.ip_addresses.map((ip: IpAddress, idx: number) => (
+                                <TableRow key={idx}>
+                                  <TableCell>
+                                    <Chip
+                                      icon={getScopeIcon(ip.scope)}
+                                      label={getScopeLabel(ip.scope)}
+                                      size="small"
+                                      color={getScopeColor(ip.scope)}
+                                    />
+                                  </TableCell>
+                                  <TableCell>
+                                    <Chip label={ip.ip_type.toUpperCase()} size="small" variant="outlined" />
+                                  </TableCell>
+                                  <TableCell align="right" sx={{ fontFamily: 'monospace', ...getIpAddressStyle() }}>
+                                    {ip.address}/{ip.prefix_len}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
                       ) : (
                         <Typography variant="body2" color="text.secondary">无IP地址</Typography>
                       )}
@@ -1424,9 +1429,9 @@ export default function NetworkPage() {
 
       {/* Tab 2: APN 配置 */}
       <TabPanel value={tabValue} index={1}>
-        <Grid container spacing={3}>
+        <Grid container spacing={3} alignItems="stretch">
           <Grid size={{ xs: 12, md: 8 }}>
-            <Card>
+            <Card sx={{ height: '100%' }}>
               <CardHeader
                 avatar={<SimCard color="primary" />}
                 title="APN 配置"
@@ -1538,63 +1543,65 @@ export default function NetworkPage() {
             </Card>
           </Grid>
 
-          {/* 右侧信息面板 */}
-          <Grid size={{ xs: 12, md: 4 }}>
-            {/* 当前状态 */}
-            {selectedContext && (
-              <Card sx={{ mb: 2 }}>
-                <CardHeader title="当前配置状态" titleTypographyProps={{ variant: 'subtitle1' }} />
-                <CardContent>
-                  <Stack spacing={1}>
-                    <Chip 
-                      label={apnContexts.find(c => c.path === selectedContext)?.active ? '已激活' : '未激活'}
-                      color={apnContexts.find(c => c.path === selectedContext)?.active ? 'success' : 'default'}
-                      sx={{ justifyContent: 'flex-start' }}
-                    />
-                    <Chip 
-                      label={`协议: ${getProtocolName(apnContexts.find(c => c.path === selectedContext)?.protocol || 'ip')}`}
-                      variant="outlined"
-                      sx={{ justifyContent: 'flex-start' }}
-                    />
-                    {apnContexts.find(c => c.path === selectedContext)?.apn && (
-                      <Chip 
-                        label={`APN: ${apnContexts.find(c => c.path === selectedContext)?.apn}`}
-                        color="primary"
+          {/* 右侧信息面板：与左侧 APN 配置卡片高度对齐，两张卡片平均分配高度 */}
+          <Grid size={{ xs: 12, md: 4 }} sx={{ display: 'flex' }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, width: '100%' }}>
+              {/* 当前状态 */}
+              {selectedContext && (
+                <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <CardHeader title="当前配置状态" titleTypographyProps={{ variant: 'subtitle1' }} />
+                  <CardContent sx={{ flex: 1, overflow: 'auto' }}>
+                    <Stack spacing={1}>
+                      <Chip
+                        label={apnContexts.find(c => c.path === selectedContext)?.active ? '已激活' : '未激活'}
+                        color={apnContexts.find(c => c.path === selectedContext)?.active ? 'success' : 'default'}
+                        sx={{ justifyContent: 'flex-start' }}
+                      />
+                      <Chip
+                        label={`协议: ${getProtocolName(apnContexts.find(c => c.path === selectedContext)?.protocol || 'ip')}`}
                         variant="outlined"
                         sx={{ justifyContent: 'flex-start' }}
                       />
-                    )}
-                  </Stack>
+                      {apnContexts.find(c => c.path === selectedContext)?.apn && (
+                        <Chip
+                          label={`APN: ${apnContexts.find(c => c.path === selectedContext)?.apn}`}
+                          color="primary"
+                          variant="outlined"
+                          sx={{ justifyContent: 'flex-start' }}
+                        />
+                      )}
+                    </Stack>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* 常用 APN 参考 */}
+              <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <CardHeader title="常用运营商 APN" titleTypographyProps={{ variant: 'subtitle1' }} />
+                <CardContent sx={{ flex: 1, overflow: 'auto' }}>
+                  <Table size="small">
+                    <TableBody>
+                      <TableRow>
+                        <TableCell><strong>中国移动</strong></TableCell>
+                        <TableCell>cmnet</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>中国联通</strong></TableCell>
+                        <TableCell>3gnet / 3gwap</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>中国电信</strong></TableCell>
+                        <TableCell>ctnet / ctlte</TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell><strong>中国广电</strong></TableCell>
+                        <TableCell>cbnet</TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
                 </CardContent>
               </Card>
-            )}
-
-            {/* 常用 APN 参考 */}
-            <Card>
-              <CardHeader title="常用运营商 APN" titleTypographyProps={{ variant: 'subtitle1' }} />
-              <CardContent>
-                <Table size="small">
-                  <TableBody>
-                    <TableRow>
-                      <TableCell><strong>中国移动</strong></TableCell>
-                      <TableCell>cmnet</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell><strong>中国联通</strong></TableCell>
-                      <TableCell>3gnet / 3gwap</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell><strong>中国电信</strong></TableCell>
-                      <TableCell>ctnet / ctlte</TableCell>
-                    </TableRow>
-                    <TableRow>
-                      <TableCell><strong>中国广电</strong></TableCell>
-                      <TableCell>cbnet</TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            </Box>
           </Grid>
         </Grid>
       </TabPanel>

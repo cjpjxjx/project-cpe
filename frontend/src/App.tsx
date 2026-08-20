@@ -8,10 +8,24 @@
  * 
  * Copyright (c) 2025 by 1orz, All Rights Reserved. 
  */
-import { lazy, Suspense, type ComponentType, type LazyExoticComponent } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { createElement, lazy, Suspense, useEffect, type ComponentType, type LazyExoticComponent } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { Box, CircularProgress } from '@mui/material'
+import type { SvgIconProps } from '@mui/material'
+import {
+  Dashboard as DashboardIcon,
+  Devices as DevicesIcon,
+  SignalCellularAlt as SignalIcon,
+  Settings as SettingsIcon,
+  Terminal as TerminalIcon,
+  Phone as PhoneIcon,
+  Sms as SmsIcon,
+  WebAsset as WebTerminalIcon,
+  SystemUpdateAlt as OtaIcon,
+  RocketLaunch as InitScriptIcon,
+} from '@mui/icons-material'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { queryClient } from './lib/queryClient'
 import MainLayout from './components/Layout/MainLayout'
@@ -43,20 +57,54 @@ interface AppRouteConfig {
   path?: string
   index?: boolean
   component: LazyPageComponent
+  title: string
+  icon: ComponentType<SvgIconProps>
 }
 
 const appRoutes: AppRouteConfig[] = [
-  { index: true, component: Dashboard },
-  { path: 'device', component: DeviceInfo },
-  { path: 'network', component: Network },
-  { path: 'phone', component: Phone },
-  { path: 'sms', component: SMS },
-  { path: 'config', component: Configuration },
-  { path: 'init-script', component: InitScript },
-  { path: 'ota', component: OtaUpdate },
-  { path: 'at-console', component: ATConsole },
-  { path: 'terminal', component: Terminal },
+  { index: true, component: Dashboard, title: '仪表盘', icon: DashboardIcon },
+  { path: 'device', component: DeviceInfo, title: '设备信息', icon: DevicesIcon },
+  { path: 'network', component: Network, title: '网络状态', icon: SignalIcon },
+  { path: 'phone', component: Phone, title: '电话管理', icon: PhoneIcon },
+  { path: 'sms', component: SMS, title: '短信管理', icon: SmsIcon },
+  { path: 'config', component: Configuration, title: '系统配置', icon: SettingsIcon },
+  { path: 'init-script', component: InitScript, title: '开机脚本', icon: InitScriptIcon },
+  { path: 'ota', component: OtaUpdate, title: 'OTA 更新', icon: OtaIcon },
+  { path: 'at-console', component: ATConsole, title: 'AT 控制台', icon: TerminalIcon },
+  { path: 'terminal', component: Terminal, title: 'Web 终端', icon: WebTerminalIcon },
 ]
+
+/** 用 MUI 图标生成 favicon data URL */
+function generateFavicon(IconComponent: ComponentType<SvgIconProps>): string {
+  const svgMarkup = renderToStaticMarkup(createElement(IconComponent))
+
+  // MUI SvgIcon 输出的 <svg> 需要注入 xmlns 才能作为独立 SVG 使用
+  const svgWithNs = svgMarkup.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
+
+  return `data:image/svg+xml,${encodeURIComponent(svgWithNs)}`
+}
+
+/** 根据当前路由动态更新浏览器标题和 favicon */
+function DocumentTitleAndFavicon() {
+  const location = useLocation()
+
+  useEffect(() => {
+    const route = appRoutes.find((r) =>
+      r.index ? location.pathname === '/' : location.pathname === `/${r.path}`
+    )
+
+    // 更新标题
+    document.title = route ? `UDX710 - ${route.title}` : 'UDX710'
+
+    // 更新 favicon
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+    if (link && route) {
+      link.href = generateFavicon(route.icon)
+    }
+  }, [location.pathname])
+
+  return null
+}
 
 function renderLazyPage(PageComponent: LazyPageComponent) {
   return (
@@ -71,6 +119,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <BrowserRouter>
+          <DocumentTitleAndFavicon />
           <Routes>
             <Route path="/" element={<MainLayout />}>
               {appRoutes.map((route) => (

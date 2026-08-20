@@ -29,7 +29,6 @@ import {
   DialogActions,
   Divider,
   Paper,
-  Badge,
   Avatar,
   Snackbar,
   useMediaQuery,
@@ -275,21 +274,6 @@ export default function SMSPage() {
     }
   }
 
-  // 格式化时间
-  const formatTime = (timestamp: string) => {
-    try {
-      const date = new Date(timestamp)
-      const now = new Date()
-      const isToday = date.toDateString() === now.toDateString()
-      if (isToday) {
-        return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
-      }
-      return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
-    } catch {
-      return timestamp
-    }
-  }
-
   // 格式化简短时间
   const formatShortTime = (timestamp: string) => {
     try {
@@ -305,6 +289,19 @@ export default function SMSPage() {
     }
   }
 
+  // 格式化完整时间（年月日时分）
+  const formatFullTime = (timestamp: string) => {
+    try {
+      const date = new Date(timestamp)
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+      })
+    } catch {
+      return timestamp
+    }
+  }
+
   // 对话列表 JSX
   const conversationListContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -312,15 +309,15 @@ export default function SMSPage() {
       {stats && (
         <Box display="flex" gap={1} p={2} flexWrap="wrap">
           <Paper sx={{ p: 1, flex: 1, minWidth: 60, textAlign: 'center' }}>
-            <Typography variant="h6" color="primary" fontWeight={600}>{stats.total}</Typography>
+            <Typography variant="h4" color="primary" fontWeight={600}>{stats.total}</Typography>
             <Typography variant="caption" color="text.secondary">总计</Typography>
           </Paper>
           <Paper sx={{ p: 1, flex: 1, minWidth: 60, textAlign: 'center' }}>
-            <Typography variant="h6" color="success.main" fontWeight={600}>{stats.incoming}</Typography>
+            <Typography variant="h4" color="success.main" fontWeight={600}>{stats.incoming}</Typography>
             <Typography variant="caption" color="text.secondary">接收</Typography>
           </Paper>
           <Paper sx={{ p: 1, flex: 1, minWidth: 60, textAlign: 'center' }}>
-            <Typography variant="h6" color="info.main" fontWeight={600}>{stats.outgoing}</Typography>
+            <Typography variant="h4" color="info.main" fontWeight={600}>{stats.outgoing}</Typography>
             <Typography variant="caption" color="text.secondary">发送</Typography>
           </Paper>
         </Box>
@@ -357,27 +354,27 @@ export default function SMSPage() {
         <List sx={{ flex: 1, overflow: 'auto' }}>
           {conversations.map((conv, idx) => (
             <Box key={conv.phoneNumber}>
-              <ListItemButton 
+              <ListItemButton
                 onClick={() => handleSelectConversation(conv.phoneNumber)}
                 selected={selectedConversation === conv.phoneNumber}
               >
-                <Avatar sx={{ mr: 2, bgcolor: 'primary.light' }}><Person /></Avatar>
+                <Avatar sx={{ bgcolor: 'primary.light' }}><Person /></Avatar>
                 <ListItemText
+                  sx={{ ml: 2 }}
                   primary={
-                    <Box display="flex" alignItems="center" gap={1}>
+                    <Box display="flex" justifyContent="space-between" alignItems="center">
                       <Typography fontWeight={600}>{conv.phoneNumber}</Typography>
-                      <Badge badgeContent={conv.messages.length} color="primary" max={99} />
+                      <Typography variant="caption" color="text.secondary">
+                        {formatShortTime(conv.lastMessage.timestamp)}
+                      </Typography>
                     </Box>
                   }
                   secondary={
-                    <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 180 }}>
+                    <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 260 }}>
                       {conv.lastMessage.direction === 'outgoing' ? '你: ' : ''}{conv.lastMessage.content}
                     </Typography>
                   }
                 />
-                <Typography variant="caption" color="text.secondary">
-                  {formatShortTime(conv.lastMessage.timestamp)}
-                </Typography>
               </ListItemButton>
               {idx < conversations.length - 1 && <Divider />}
             </Box>
@@ -431,19 +428,23 @@ export default function SMSPage() {
               <Box
                 key={msg.id || idx}
                 display="flex"
-                justifyContent={msg.direction === 'outgoing' ? 'flex-end' : 'flex-start'}
+                flexDirection="column"
+                alignItems={msg.direction === 'outgoing' ? 'flex-end' : 'flex-start'}
                 mb={1.5}
               >
+                <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, px: 0.5 }}>
+                  {formatFullTime(msg.timestamp)}
+                </Typography>
                 <Paper
                   elevation={1}
                   sx={{
                     p: 1.5,
                     maxWidth: '75%',
-                    bgcolor: msg.direction === 'outgoing' 
-                      ? 'primary.main' 
+                    bgcolor: msg.direction === 'outgoing'
+                      ? 'primary.main'
                       : (theme: Theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'white',
-                    color: msg.direction === 'outgoing' 
-                      ? 'white' 
+                    color: msg.direction === 'outgoing'
+                      ? 'white'
                       : 'text.primary',
                     borderRadius: 2,
                     borderTopRightRadius: msg.direction === 'outgoing' ? 0 : 16,
@@ -453,21 +454,17 @@ export default function SMSPage() {
                   <Typography variant="body2" sx={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                     {msg.content}
                   </Typography>
-                  <Box display="flex" alignItems="center" justifyContent="flex-end" gap={0.5} mt={0.5}>
-                    <Typography 
-                      variant="caption" 
-                      sx={{ opacity: 0.7 }}
-                    >
-                      {formatTime(msg.timestamp)}
-                    </Typography>
-                    {msg.direction === 'outgoing' && (
-                      msg.status === 'sent' ? (
+                  {msg.direction === 'outgoing' && (
+                    msg.status === 'sent' ? (
+                      <Box display="flex" justifyContent="flex-end" mt={0.5}>
                         <Chip label="已发送" size="small" sx={{ height: 16, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.2)' }} />
-                      ) : msg.status === 'failed' ? (
+                      </Box>
+                    ) : msg.status === 'failed' ? (
+                      <Box display="flex" justifyContent="flex-end" mt={0.5}>
                         <Chip label="失败" size="small" color="error" sx={{ height: 16, fontSize: '0.65rem' }} />
-                      ) : null
-                    )}
-                  </Box>
+                      </Box>
+                    ) : null
+                  )}
                 </Paper>
               </Box>
             ))}
@@ -532,7 +529,7 @@ export default function SMSPage() {
         选择一个对话开始聊天
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        或点击左上角 + 开始新对话
+        或点击列表左上角 + 开始新对话
       </Typography>
     </Box>
   )

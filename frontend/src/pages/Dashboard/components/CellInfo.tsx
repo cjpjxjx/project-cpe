@@ -38,7 +38,7 @@ interface CellInfoProps {
 
 export function CellInfo({ cellsInfo }: CellInfoProps) {
   const [expanded, setExpanded] = useState(true)
-  const [showInfo, setShowInfo] = useState(false)
+  const [showInfo, setShowInfo] = useState(true)
 
   return (
     <Card>

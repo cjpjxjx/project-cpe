@@ -46,8 +46,8 @@ export default function DeviceInfoPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   // 每个功能块独立的敏感信息显示状态
-  const [showDeviceId, setShowDeviceId] = useState(false)
-  const [showSimInfo, setShowSimInfo] = useState(false)
+  const [showDeviceId, setShowDeviceId] = useState(true)
+  const [showSimInfo, setShowSimInfo] = useState(true)
   
   // 设备信息（包含 online, powered, manufacturer, model）
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null)
@@ -161,7 +161,7 @@ export default function DeviceInfoPage() {
       <Grid container spacing={3}>
         {/* Modem 基础信息 */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card>
+          <Card sx={{ height: '100%' }}>
             <CardHeader
               avatar={<PhoneAndroid color="primary" />}
               title="设备状态"
@@ -212,7 +212,7 @@ export default function DeviceInfoPage() {
 
         {/* 设备标识信息 */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card>
+          <Card sx={{ height: '100%' }}>
             <CardHeader
               avatar={<Tag color="primary" />}
               title="设备标识"
@@ -284,7 +284,7 @@ export default function DeviceInfoPage() {
 
         {/* SIM 卡完整信息 */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card>
+          <Card sx={{ height: '100%' }}>
             <CardHeader
               avatar={<SimCard color="primary" />}
               title="SIM 卡信息"
@@ -366,27 +366,21 @@ export default function DeviceInfoPage() {
 
         {/* SIM 卡槽管理 */}
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card>
+          <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <CardHeader
               avatar={<SwapHoriz color="primary" />}
               title="SIM 卡槽"
               titleTypographyProps={{ variant: 'h6' }}
             />
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-                <Box>
-                  <Typography variant="body1">
-                    当前卡槽: <Chip 
-                      label={simSlot?.active_slot ? `卡槽 ${simSlot.active_slot}` : '未知'} 
-                      color="primary" 
-                      size="small" 
-                    />
-                  </Typography>
-                  {simSlot?.raw_value && (
-                    <Typography variant="caption" color="text.secondary">
-                      原始值: {simSlot.raw_value}
-                    </Typography>
-                  )}
+            <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} mb={1}>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Typography variant="body1">当前卡槽:</Typography>
+                  <Chip
+                    label={simSlot?.active_slot ? `卡槽 ${simSlot.active_slot}` : '未知'}
+                    color="primary"
+                    size="small"
+                  />
                 </Box>
                 <Button
                   variant="outlined"
@@ -397,7 +391,12 @@ export default function DeviceInfoPage() {
                   {switchingSlot ? <CircularProgress size={20} /> : `切换到卡槽 ${simSlot?.active_slot === 1 ? 2 : 1}`}
                 </Button>
               </Box>
-              <Alert severity="info" variant="outlined">
+              {simSlot?.raw_value && (
+                <Typography variant="caption" color="text.secondary" display="block">
+                  原始值: {simSlot.raw_value}
+                </Typography>
+              )}
+              <Alert severity="info" variant="outlined" sx={{ mt: 'auto' }}>
                 切换 SIM 卡槽后，设备可能需要重新注册网络。
               </Alert>
             </CardContent>

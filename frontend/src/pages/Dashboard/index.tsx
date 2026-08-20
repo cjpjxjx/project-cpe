@@ -23,6 +23,7 @@ import {
   TemperatureMonitor,
   CellInfo,
   DeviceInfoCard,
+  DiskUsage,
 } from './components'
 
 export default function Dashboard() {
@@ -75,13 +76,18 @@ export default function Dashboard() {
           <SystemResources systemStats={data.systemStats} />
         </Grid>
 
-        {/* 第二行：实时网速、温度监控 */}
-        <Grid size={{ xs: 12, md: 8 }}>
+        {/* 第二行：实时网速、磁盘使用 + 温度监控（右侧两卡堆叠，宽度与上方系统资源对齐） */}
+        <Grid size={{ xs: 12, md: 9 }}>
           <NetworkSpeed systemStats={data.systemStats} speedHistory={data.speedHistory} />
         </Grid>
 
-        <Grid size={{ xs: 12, md: 4 }}>
-          <TemperatureMonitor systemStats={data.systemStats} />
+        <Grid size={{ xs: 12, md: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 2 }}>
+            <DiskUsage systemStats={data.systemStats} />
+            <Box sx={{ flex: 1, minHeight: 0 }}>
+              <TemperatureMonitor systemStats={data.systemStats} />
+            </Box>
+          </Box>
         </Grid>
 
         {/* 第三行：小区信息（全宽） */}

@@ -20,8 +20,8 @@ interface TemperatureMonitorProps {
 
 export function TemperatureMonitor({ systemStats }: TemperatureMonitorProps) {
   return (
-    <Card>
-      <CardContent>
+    <Card sx={{ height: '100%' }}>
+      <CardContent sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         <Box display="flex" alignItems="center" gap={1} mb={2}>
           <Thermostat color="primary" />
           <Typography variant="subtitle2" color="text.secondary">
@@ -29,10 +29,20 @@ export function TemperatureMonitor({ systemStats }: TemperatureMonitorProps) {
           </Typography>
         </Box>
         {systemStats?.temperature && systemStats.temperature.length > 0 ? (
-          <Grid container spacing={1}>
+          <Grid container spacing={1} sx={{ flex: 1 }}>
             {systemStats.temperature.map((sensor, idx) => (
-              <Grid size={{ xs: 6, sm: 4 }} key={idx}>
-                <Paper variant="outlined" sx={{ p: 1.5, textAlign: 'center' }}>
+              <Grid size={{ xs: 6, sm: 4 }} key={idx} sx={{ display: 'flex' }}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 1.5,
+                    width: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
                   <Typography variant="caption" color="text.secondary" display="block" noWrap>
                     {sensor.type}
                   </Typography>

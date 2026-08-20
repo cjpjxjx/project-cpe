@@ -9,7 +9,7 @@
  * Copyright (c) 2025 by 1orz, All Rights Reserved.
  */
 import { Box, Card, CardContent, Typography, Stack, Switch, Chip } from '@mui/material'
-import { NetworkCheck, FlightTakeoff, TravelExplore } from '@mui/icons-material'
+import { NetworkCheck, FlightTakeoff, TravelExplore, ToggleOn } from '@mui/icons-material'
 import type { AirplaneModeResponse, RoamingResponse } from '@/api/types'
 
 interface QuickControlsProps {
@@ -32,9 +32,12 @@ export function QuickControls({
   return (
     <Card sx={{ height: '100%' }}>
       <CardContent>
-        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-          快捷控制
-        </Typography>
+        <Box display="flex" alignItems="center" gap={1} mb={2}>
+          <ToggleOn color="primary" />
+          <Typography variant="subtitle2" color="text.secondary">
+            快捷控制
+          </Typography>
+        </Box>
         <Stack spacing={2}>
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <Box display="flex" alignItems="center" gap={1}>

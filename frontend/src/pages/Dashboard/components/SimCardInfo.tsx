@@ -10,7 +10,7 @@
  */
 import { useState } from 'react'
 import { Box, Card, CardContent, Typography, Stack, Chip, IconButton, Tooltip } from '@mui/material'
-import { SimCard, Visibility, VisibilityOff, Phone, Sms, Language } from '@mui/icons-material'
+import { SimCard, Visibility, VisibilityOff } from '@mui/icons-material'
 import { getSensitiveStyle } from '../utils'
 import type { SimInfo } from '@/api/types'
 
@@ -19,7 +19,7 @@ interface SimCardInfoProps {
 }
 
 export function SimCardInfo({ simInfo }: SimCardInfoProps) {
-  const [showInfo, setShowInfo] = useState(false)
+  const [showInfo, setShowInfo] = useState(true)
 
   return (
     <Card sx={{ height: '100%' }}>
@@ -60,23 +60,17 @@ export function SimCardInfo({ simInfo }: SimCardInfoProps) {
             </Typography>
           </Box>
           <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box display="flex" alignItems="center" gap={0.5}>
-              <Phone fontSize="small" color="action" />
-              <Typography variant="caption" color="text.secondary">
-                手机号码
-              </Typography>
-            </Box>
+            <Typography variant="caption" color="text.secondary">
+              手机号码
+            </Typography>
             <Typography variant="body2" fontWeight="medium" fontFamily="monospace" sx={getSensitiveStyle(showInfo)}>
               {simInfo?.phone_numbers?.length ? simInfo.phone_numbers[0] : 'N/A'}
             </Typography>
           </Box>
           <Box display="flex" justifyContent="space-between" alignItems="center">
-            <Box display="flex" alignItems="center" gap={0.5}>
-              <Sms fontSize="small" color="action" />
-              <Typography variant="caption" color="text.secondary">
-                短信中心
-              </Typography>
-            </Box>
+            <Typography variant="caption" color="text.secondary">
+              短信中心
+            </Typography>
             <Typography variant="body2" fontWeight="medium" fontFamily="monospace" sx={getSensitiveStyle(showInfo)}>
               {simInfo?.sms_center || 'N/A'}
             </Typography>
@@ -91,12 +85,9 @@ export function SimCardInfo({ simInfo }: SimCardInfoProps) {
           </Box>
           {simInfo?.preferred_languages && simInfo.preferred_languages.length > 0 && (
             <Box display="flex" justifyContent="space-between" alignItems="center">
-              <Box display="flex" alignItems="center" gap={0.5}>
-                <Language fontSize="small" color="action" />
-                <Typography variant="caption" color="text.secondary">
-                  语言
-                </Typography>
-              </Box>
+              <Typography variant="caption" color="text.secondary">
+                语言
+              </Typography>
               <Stack direction="row" spacing={0.5}>
                 {simInfo.preferred_languages.slice(0, 3).map((lang, idx) => (
                   <Chip key={idx} label={lang.toUpperCase()} size="small" variant="outlined" />

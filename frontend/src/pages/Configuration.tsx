@@ -524,51 +524,50 @@ export default function ConfigurationPage() {
       )}
 
       {/* 健康检查状态卡片 */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
+      <Grid container spacing={3} sx={{ mb: 3 }} alignItems="stretch">
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card>
+          <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <CardHeader
               avatar={<HealthAndSafety color="primary" />}
               title="系统健康检查"
               titleTypographyProps={{ variant: 'h6', fontWeight: 600 }}
+              sx={{ '& .MuiCardHeader-action': { mr: 0 } }}
               action={
-                <Button
-                  size="small"
-                  onClick={() => void checkHealth()}
-                  disabled={healthLoading}
-                  startIcon={healthLoading ? <CircularProgress size={16} /> : undefined}
-                >
-                  刷新
-                </Button>
+                <Box display="flex" alignItems="center" gap={1} sx={{ cursor: 'pointer' }} onClick={() => void checkHealth()}>
+                  {healthLoading && <CircularProgress size={14} />}
+                  {healthStatus?.timestamp && (
+                    <Typography variant="caption" color="text.secondary">
+                      上次检查: {new Date(healthStatus.timestamp).toLocaleTimeString()}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" color="primary" sx={{ fontWeight: 500, userSelect: 'none' }}>
+                    刷新
+                  </Typography>
+                </Box>
               }
             />
-            <CardContent>
+            <CardContent sx={{ flex: 1, display: 'flex', alignItems: 'flex-end' }}>
               {healthLoading && !healthStatus ? (
-                <LinearProgress />
+                <LinearProgress sx={{ width: '100%' }} />
               ) : (
-                <Box display="flex" alignItems="center" gap={2}>
-                  {healthStatus?.status === 'ok' ? (
-                    <CheckCircle sx={{ fontSize: 48, color: 'success.main' }} />
-                  ) : (
-                    <ErrorIcon sx={{ fontSize: 48, color: 'error.main' }} />
-                  )}
-                  <Box>
+                <Box display="flex" alignItems="flex-end" justifyContent="space-between" gap={2} width="100%">
+                  <Box display="flex" alignItems="center" gap={2}>
+                    {healthStatus?.status === 'ok' ? (
+                      <CheckCircle sx={{ fontSize: 48, color: 'success.main' }} />
+                    ) : (
+                      <ErrorIcon sx={{ fontSize: 48, color: 'error.main' }} />
+                    )}
                     <Typography variant="h6" fontWeight={600}>
                       {healthStatus?.status === 'ok' ? '系统正常' : '系统异常'}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      后端服务: <Chip
-                        label={healthStatus?.status === 'ok' ? '运行中' : '异常'}
-                        size="small"
-                        color={healthStatus?.status === 'ok' ? 'success' : 'error'}
-                      />
-                    </Typography>
-                    {healthStatus?.timestamp && (
-                      <Typography variant="caption" color="text.secondary">
-                        上次检查: {new Date(healthStatus.timestamp).toLocaleTimeString()}
-                      </Typography>
-                    )}
                   </Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    后端服务: <Chip
+                      label={healthStatus?.status === 'ok' ? '运行中' : '异常'}
+                      size="small"
+                      color={healthStatus?.status === 'ok' ? 'success' : 'error'}
+                    />
+                  </Typography>
                 </Box>
               )}
             </CardContent>
@@ -576,13 +575,13 @@ export default function ConfigurationPage() {
         </Grid>
 
         <Grid size={{ xs: 12, md: 6 }}>
-          <Card>
+          <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <CardHeader
               avatar={<Usb color="primary" />}
               title="当前 USB 模式"
               titleTypographyProps={{ variant: 'h6', fontWeight: 600 }}
             />
-            <CardContent>
+            <CardContent sx={{ flex: 1, display: 'flex', alignItems: 'flex-end' }}>
               <Box display="flex" alignItems="center" gap={2}>
                 <Chip
                   label={usbMode?.current_mode_name || 'N/A'}

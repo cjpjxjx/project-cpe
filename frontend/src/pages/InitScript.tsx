@@ -26,6 +26,7 @@ import {
 } from '@mui/material'
 import {
   CheckCircle,
+  Close,
   FactCheck,
   Refresh,
   RocketLaunch,
@@ -392,12 +393,13 @@ export default function InitScriptPage() {
               justifyContent="space-between"
               alignItems={{ xs: 'flex-start', md: 'center' }}
               flexDirection={{ xs: 'column', md: 'row' }}
+              flexWrap="wrap"
               gap={{ xs: 1.5, sm: 2 }}
               mb={{ xs: 2, sm: 2.5 }}
             >
-              <Box sx={{ width: '100%' }}>
+              <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
                 <Typography variant="h6">脚本编辑</Typography>
-                <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap" mt={1}>
+                <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
                   <Chip
                     label={loaderHooked ? 'loader.sh 已挂载 init.sh' : 'loader.sh 尚未挂载 init.sh'}
                     color={loaderHooked ? 'success' : 'warning'}
@@ -429,7 +431,7 @@ export default function InitScriptPage() {
                   onClick={() => void handleSave()}
                   disabled={saving}
                   startIcon={saving ? <CircularProgress size={20} color="inherit" /> : <Save />}
-                  sx={{ width: { xs: '100%', sm: 'auto' } }}
+                  sx={{ width: { xs: '100%', sm: 'auto' }, whiteSpace: 'nowrap', flexShrink: 0 }}
                 >
                   {saving ? '保存中...' : '保存脚本'}
                 </Button>
@@ -438,18 +440,19 @@ export default function InitScriptPage() {
                   onClick={() => void loadScript()}
                   disabled={loading || saving}
                   startIcon={<Refresh />}
-                  sx={{ width: { xs: '100%', sm: 'auto' } }}
+                  sx={{ width: { xs: '100%', sm: 'auto' }, whiteSpace: 'nowrap', flexShrink: 0 }}
                 >
                   重新加载
                 </Button>
                 <Button
-                  variant="text"
+                  variant="outlined"
                   color="warning"
                   onClick={() => setScript('')}
                   disabled={saving}
-                  sx={{ width: { xs: '100%', sm: 'auto' } }}
+                  startIcon={<Close />}
+                  sx={{ width: { xs: '100%', sm: 'auto' }, whiteSpace: 'nowrap', flexShrink: 0 }}
                 >
-                  清空编辑器
+                  清空编辑
                 </Button>
               </Stack>
             </Box>
@@ -586,7 +589,7 @@ export default function InitScriptPage() {
           </Card>
         </Box>
 
-        <Alert severity={sensitiveMatches.length > 0 ? 'warning' : 'info'}>
+        <Alert severity={sensitiveMatches.length > 0 ? 'warning' : 'info'} variant="outlined">
           <AlertTitle>说明</AlertTitle>
           页面只维护 <code>init.sh</code> 文件，不会覆盖 <code>loader.sh</code> 原有启动逻辑。
           如果脚本留空，设备仍会保留启动入口。敏感命令只做标记提醒，不会阻止保存。
@@ -627,7 +630,7 @@ export default function InitScriptPage() {
         <Card>
           <CardContent>
             <Box display="flex" alignItems="center" gap={1} mb={2}>
-              <WarningAmber color={sensitiveMatches.length > 0 ? 'warning' : 'disabled'} />
+              <WarningAmber color={sensitiveMatches.length > 0 ? 'warning' : 'primary'} />
               <Typography variant="h6">命令预览与标记</Typography>
             </Box>
 

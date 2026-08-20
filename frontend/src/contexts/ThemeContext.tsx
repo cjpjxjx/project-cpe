@@ -9,16 +9,18 @@
  * Copyright (c) 2025 by 1orz, All Rights Reserved. 
  */
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 
-type ThemeMode = 'light' | 'dark'
+type ThemeMode = 'light' | 'dark' | 'auto'
+type ResolvedThemeMode = 'light' | 'dark'
 
 interface ThemeContextType {
   mode: ThemeMode
-  toggleTheme: () => void
+  resolvedMode: ResolvedThemeMode
+  setMode: (mode: ThemeMode) => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
@@ -31,62 +33,77 @@ export function useTheme() {
   return context
 }
 
+function getSystemPrefersDark(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
+}
+
 interface ThemeProviderProps {
   children: ReactNode
 }
 
 export function ThemeProvider({ children }: ThemeProviderProps) {
-  // 从 localStorage 读取保存的主题，默认浅色
+  // 从 localStorage 读取保存的主题，默认自动
   const [mode, setMode] = useState<ThemeMode>(() => {
     const saved = localStorage.getItem('theme-mode')
-    return (saved === 'dark' ? 'dark' : 'light') as ThemeMode
+    return saved === 'dark' || saved === 'light' || saved === 'auto' ? saved : 'auto'
   })
+
+  // 跟踪系统颜色模式偏好（仅在 auto 模式下需要）
+  const [systemPrefersDark, setSystemPrefersDark] = useState(getSystemPrefersDark)
 
   // 保存主题设置到 localStorage
   useEffect(() => {
     localStorage.setItem('theme-mode', mode)
   }, [mode])
 
-  const toggleTheme = () => {
-    setMode((prev) => (prev === 'light' ? 'dark' : 'light'))
-  }
+  // 监听系统颜色模式变化，供 auto 模式实时响应
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    const handleChange = (event: MediaQueryListEvent) => {
+      setSystemPrefersDark(event.matches)
+    }
+    mediaQuery.addEventListener('change', handleChange)
+    return () => mediaQuery.removeEventListener('change', handleChange)
+  }, [])
 
-  const theme = createTheme({
+  const resolvedMode: ResolvedThemeMode = mode === 'auto' ? (systemPrefersDark ? 'dark' : 'light') : mode
+
+  const theme = useMemo(() => createTheme({
     palette: {
-      mode,
+      mode: resolvedMode,
       primary: {
-        main: mode === 'light' ? '#1976d2' : '#90caf9',
-        light: mode === 'light' ? '#42a5f5' : '#e3f2fd',
-        dark: mode === 'light' ? '#1565c0' : '#42a5f5',
+        main: resolvedMode === 'light' ? '#1976d2' : '#90caf9',
+        light: resolvedMode === 'light' ? '#42a5f5' : '#e3f2fd',
+        dark: resolvedMode === 'light' ? '#1565c0' : '#42a5f5',
       },
       secondary: {
-        main: mode === 'light' ? '#dc004e' : '#f48fb1',
-        light: mode === 'light' ? '#f50057' : '#f8bbd0',
-        dark: mode === 'light' ? '#c51162' : '#ec407a',
+        main: resolvedMode === 'light' ? '#dc004e' : '#f48fb1',
+        light: resolvedMode === 'light' ? '#f50057' : '#f8bbd0',
+        dark: resolvedMode === 'light' ? '#c51162' : '#ec407a',
       },
       success: {
-        main: mode === 'light' ? '#2e7d32' : '#66bb6a',
-        light: mode === 'light' ? '#4caf50' : '#81c784',
-        dark: mode === 'light' ? '#1b5e20' : '#388e3c',
+        main: resolvedMode === 'light' ? '#2e7d32' : '#66bb6a',
+        light: resolvedMode === 'light' ? '#4caf50' : '#81c784',
+        dark: resolvedMode === 'light' ? '#1b5e20' : '#388e3c',
       },
       warning: {
-        main: mode === 'light' ? '#ed6c02' : '#ffa726',
-        light: mode === 'light' ? '#ff9800' : '#ffb74d',
-        dark: mode === 'light' ? '#e65100' : '#f57c00',
+        main: resolvedMode === 'light' ? '#ed6c02' : '#ffa726',
+        light: resolvedMode === 'light' ? '#ff9800' : '#ffb74d',
+        dark: resolvedMode === 'light' ? '#e65100' : '#f57c00',
       },
       error: {
-        main: mode === 'light' ? '#d32f2f' : '#f44336',
-        light: mode === 'light' ? '#ef5350' : '#e57373',
-        dark: mode === 'light' ? '#c62828' : '#d32f2f',
+        main: resolvedMode === 'light' ? '#d32f2f' : '#f44336',
+        light: resolvedMode === 'light' ? '#ef5350' : '#e57373',
+        dark: resolvedMode === 'light' ? '#c62828' : '#d32f2f',
       },
       info: {
-        main: mode === 'light' ? '#0288d1' : '#29b6f6',
-        light: mode === 'light' ? '#03a9f4' : '#4fc3f7',
-        dark: mode === 'light' ? '#01579b' : '#0277bd',
+        main: resolvedMode === 'light' ? '#0288d1' : '#29b6f6',
+        light: resolvedMode === 'light' ? '#03a9f4' : '#4fc3f7',
+        dark: resolvedMode === 'light' ? '#01579b' : '#0277bd',
       },
       background: {
-        default: mode === 'light' ? '#f5f5f5' : '#121212',
-        paper: mode === 'light' ? '#ffffff' : '#1e1e1e',
+        default: resolvedMode === 'light' ? '#f5f5f5' : '#121212',
+        paper: resolvedMode === 'light' ? '#ffffff' : '#1e1e1e',
       },
     },
     typography: {
@@ -116,24 +133,24 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       MuiCssBaseline: {
         styleOverrides: {
           body: {
-            scrollbarColor: mode === 'dark' ? '#6b6b6b #2b2b2b' : '#c1c1c1 #f1f1f1',
+            scrollbarColor: resolvedMode === 'dark' ? '#6b6b6b #2b2b2b' : '#c1c1c1 #f1f1f1',
             '&::-webkit-scrollbar, & *::-webkit-scrollbar': {
               width: 8,
               height: 8,
             },
             '&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb': {
               borderRadius: 4,
-              backgroundColor: mode === 'dark' ? '#6b6b6b' : '#c1c1c1',
+              backgroundColor: resolvedMode === 'dark' ? '#6b6b6b' : '#c1c1c1',
             },
             '&::-webkit-scrollbar-track, & *::-webkit-scrollbar-track': {
-              backgroundColor: mode === 'dark' ? '#2b2b2b' : '#f1f1f1',
+              backgroundColor: resolvedMode === 'dark' ? '#2b2b2b' : '#f1f1f1',
             },
           },
         },
       },
       MuiCard: {
         defaultProps: {
-          elevation: mode === 'dark' ? 3 : 2,
+          elevation: resolvedMode === 'dark' ? 3 : 2,
         },
         styleOverrides: {
           root: {
@@ -179,10 +196,10 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     shape: {
       borderRadius: 8,
     },
-  })
+  }), [resolvedMode])
 
   return (
-    <ThemeContext.Provider value={{ mode, toggleTheme }}>
+    <ThemeContext.Provider value={{ mode, resolvedMode, setMode }}>
       <MuiThemeProvider theme={theme}>
         <CssBaseline />
         {children}

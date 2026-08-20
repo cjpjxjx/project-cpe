@@ -20,7 +20,7 @@ interface DeviceInfoCardProps {
 }
 
 export function DeviceInfoCard({ deviceInfo, systemStats }: DeviceInfoCardProps) {
-  const [showInfo, setShowInfo] = useState(false)
+  const [showInfo, setShowInfo] = useState(true)
 
   return (
     <Card>

@@ -25,8 +25,8 @@ export function NetworkSpeed({ systemStats, speedHistory }: NetworkSpeedProps) {
   const theme = useTheme<Theme>()
 
   return (
-    <Card sx={{ height: '100%', overflow: 'hidden' }}>
-      <CardContent>
+    <Card sx={{ height: '100%', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
         <Box display="flex" alignItems="center" gap={1} mb={2}>
           <Speed color="primary" />
           <Typography variant="subtitle2" color="text.secondary">
@@ -37,7 +37,7 @@ export function NetworkSpeed({ systemStats, speedHistory }: NetworkSpeedProps) {
           </Typography>
         </Box>
         {systemStats?.network_speed?.interfaces && systemStats.network_speed.interfaces.length > 0 ? (
-          <Stack spacing={2}>
+          <Stack spacing={2} sx={{ flex: 1 }}>
             {systemStats.network_speed.interfaces.map((iface) => {
               const history = speedHistory[iface.interface]
               const rxData = history?.rx || []
@@ -51,6 +51,9 @@ export function NetworkSpeed({ systemStats, speedHistory }: NetworkSpeedProps) {
                   sx={{
                     p: 2,
                     overflow: 'hidden',
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
                     background: (() => {
                       const paperColor = (theme.palette.background as { paper: string }).paper
                       return alpha(paperColor, 0.6)
@@ -64,7 +67,7 @@ export function NetworkSpeed({ systemStats, speedHistory }: NetworkSpeedProps) {
                     </Typography>
                   </Box>
 
-                  <Box mb={1.5}>
+                  <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', mb: 1.5 }}>
                     <Box display="flex" alignItems="center" justifyContent="space-between" mb={0.5}>
                       <Box display="flex" alignItems="center" gap={0.5}>
                         <ArrowDownward fontSize="small" sx={{ color: (theme.palette.success as { main: string }).main }} />
@@ -86,7 +89,7 @@ export function NetworkSpeed({ systemStats, speedHistory }: NetworkSpeedProps) {
                       </Typography>
                     </Box>
                     {rxData.length > 1 && (
-                      <Box sx={{ height: 40, width: '100%' }}>
+                      <Box sx={{ flex: 1, minHeight: 40, width: '100%' }}>
                         <SparkLineChart
                           data={rxData}
                           height={40}
@@ -100,7 +103,7 @@ export function NetworkSpeed({ systemStats, speedHistory }: NetworkSpeedProps) {
                     )}
                   </Box>
 
-                  <Box>
+                  <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                     <Box display="flex" alignItems="center" justifyContent="space-between" mb={0.5}>
                       <Box display="flex" alignItems="center" gap={0.5}>
                         <ArrowUpward fontSize="small" sx={{ color: (theme.palette.primary as { main: string }).main }} />
@@ -122,7 +125,7 @@ export function NetworkSpeed({ systemStats, speedHistory }: NetworkSpeedProps) {
                       </Typography>
                     </Box>
                     {txData.length > 1 && (
-                      <Box sx={{ height: 40, width: '100%' }}>
+                      <Box sx={{ flex: 1, minHeight: 40, width: '100%' }}>
                         <SparkLineChart
                           data={txData}
                           height={40}

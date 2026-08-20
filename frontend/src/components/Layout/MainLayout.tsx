@@ -162,13 +162,16 @@ export default function MainLayout() {
           component="main"
           sx={{
             flexGrow: 1,
+            display: 'flex',
+            flexDirection: 'column',
             p: { xs: 2, sm: 3 },
             width: {
               xs: '100%',
               sm: desktopOpen ? `calc(100% - ${DRAWER_WIDTH}px)` : '100%',
             },
             mt: { xs: 7, sm: 8 },
-            minHeight: '100vh',
+            height: { xs: 'calc(100vh - 56px)', sm: 'calc(100vh - 64px)' },
+            overflowY: 'auto',
             backgroundColor: 'background.default',
             transition: theme.transitions.create(['width', 'margin'], {
               easing: theme.transitions.easing.sharp,

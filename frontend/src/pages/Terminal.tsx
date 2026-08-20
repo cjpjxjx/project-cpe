@@ -9,7 +9,7 @@
  * Copyright (c) 2025 by 1orz, All Rights Reserved. 
  */
 import { Box, Typography, IconButton, Tooltip } from '@mui/material'
-import { OpenInNew as OpenInNewIcon, Fullscreen as FullscreenIcon } from '@mui/icons-material'
+import { OpenInNew as OpenInNewIcon, Fullscreen as FullscreenIcon, FullscreenExit as FullscreenExitIcon } from '@mui/icons-material'
 import { useState, useRef } from 'react'
 
 export default function Terminal() {
@@ -47,12 +47,12 @@ export default function Terminal() {
         }}
       >
         <Typography variant="h5" fontWeight={600}>
-          Web Terminal
+          Web 终端
         </Typography>
         <Box>
           <Tooltip title="Fullscreen">
             <IconButton onClick={handleFullscreen} size="small">
-              <FullscreenIcon />
+              {isFullscreen ? <FullscreenExitIcon /> : <FullscreenIcon />}
             </IconButton>
           </Tooltip>
           <Tooltip title="Open in new tab">
@@ -68,7 +68,7 @@ export default function Terminal() {
         ref={containerRef}
         sx={{
           flexGrow: 1,
-          minHeight: 'calc(100vh - 200px)',
+          minHeight: 0,
           borderRadius: 2,
           overflow: 'hidden',
           border: 1,
@@ -83,7 +83,6 @@ export default function Terminal() {
             width: '100%',
             height: '100%',
             border: 'none',
-            minHeight: isFullscreen ? '100vh' : 'calc(100vh - 200px)',
           }}
           allow="clipboard-read; clipboard-write"
         />
