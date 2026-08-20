@@ -820,7 +820,7 @@ export default function ConfigurationPage() {
                     <FlashOn color={useHotSwitch ? 'warning' : 'disabled'} />
                     <Box>
                       <Typography variant="body1" fontWeight={600}>
-                        热切换模式(开发中...请勿使用)
+                        热切换模式（开发中，请勿使用）
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
                         立即切换 USB 模式，无需重启（可能导致短暂断连）
@@ -884,6 +884,7 @@ export default function ConfigurationPage() {
                 onClick={handleReboot}
                 disabled={rebooting}
                 startIcon={rebooting ? <CircularProgress size={20} /> : undefined}
+                sx={{ whiteSpace: 'nowrap' }}
               >
                 {rebooting ? '重启中...' : '立即重启'}
               </Button>
@@ -903,10 +904,10 @@ export default function ConfigurationPage() {
                   </>
                 ) : (
                   <>
-                - USB 模式配置需要重启设备后才能生效<br/>
-                - 当前硬件运行模式：{usbMode?.current_mode_name || 'N/A'}<br/>
-                {usbMode?.temporary_mode && `- 临时配置：${getModeNameByValue(usbMode.temporary_mode)}`}<br/>
-                {usbMode?.permanent_mode && `- 永久配置：${getModeNameByValue(usbMode.permanent_mode)}`}
+                    - USB 模式配置需要重启设备后才能生效<br/>
+                    - 当前硬件运行模式：{usbMode?.current_mode_name || 'N/A'}
+                    {usbMode?.temporary_mode && <><br/>- 临时配置：{getModeNameByValue(usbMode.temporary_mode)}</>}
+                    {usbMode?.permanent_mode && <><br/>- 永久配置：{getModeNameByValue(usbMode.permanent_mode)}</>}
                   </>
                 )}
               </Typography>
@@ -1133,16 +1134,14 @@ export default function ConfigurationPage() {
                 onClick={() => void handleTestWebhook()}
                 disabled={webhookTesting || !webhookConfig.enabled || !webhookConfig.url}
                 startIcon={webhookTesting ? <CircularProgress size={20} /> : <PlayArrow />}
+                sx={{ whiteSpace: 'nowrap' }}
               >
                 {webhookTesting ? '测试中...' : '测试'}
               </Button>
             </Box>
 
-            <Alert severity="success" sx={{ mt: 2 }}>
-              <Typography variant="body2">
-                <strong>💡 提示</strong><br/>
-                点击"测试"按钮会使用短信模板发送一条模拟消息到 Webhook URL，可用于验证配置是否正确。
-              </Typography>
+            <Alert severity="info" sx={{ mt: 2 }}>
+              提示：点击「测试」按钮会使用短信模板发送一条模拟消息到 Webhook URL，可用于验证配置是否正确。
             </Alert>
           </AccordionDetails>
         </Accordion>
@@ -1313,16 +1312,14 @@ export default function ConfigurationPage() {
                 onClick={() => void handleTestSmsPush()}
                 disabled={smsPushTesting || !smsPushCanTest}
                 startIcon={smsPushTesting ? <CircularProgress size={20} /> : <PlayArrow />}
+                sx={{ whiteSpace: 'nowrap' }}
               >
                 {smsPushTesting ? '测试中...' : '测试'}
               </Button>
             </Box>
 
-            <Alert severity="success" sx={{ mt: 2 }}>
-              <Typography variant="body2">
-                <strong>💡 提示</strong><br />
-                测试会发送一条模拟短信，建议先确认凭证、服务地址和主题是否填写正确。
-              </Typography>
+            <Alert severity="info" sx={{ mt: 2 }}>
+              提示：测试会发送一条模拟短信，建议先确认凭证、服务地址和主题是否填写正确。
             </Alert>
           </AccordionDetails>
         </Accordion>

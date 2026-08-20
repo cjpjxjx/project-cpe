@@ -632,7 +632,7 @@ fn read_temperature_sensors() -> Vec<ThermalZone> {
     sensors
 }
 
-/// 获取USB模式名称
+/// 获取 USB 模式名称
 fn get_mode_name(mode: Option<u8>) -> String {
     match mode {
         Some(1) => "CDC-NCM".to_string(),
@@ -642,7 +642,7 @@ fn get_mode_name(mode: Option<u8>) -> String {
     }
 }
 
-/// GET /api/usb-mode - 查询USB模式配置
+/// GET /api/usb-mode - 查询 USB 模式配置
 ///
 /// 返回当前硬件实际运行的模式、永久配置和临时配置
 ///
@@ -688,7 +688,7 @@ pub async fn get_usb_mode() -> impl IntoResponse {
     }
 }
 
-/// POST /api/usb-mode - 设置USB模式配置（写入配置文件，重启后生效）
+/// POST /api/usb-mode - 设置 USB 模式配置（写入配置文件，重启后生效）
 ///
 /// # Request body
 /// ```json
@@ -741,7 +741,7 @@ pub async fn set_usb_mode(Json(payload): Json<SetUsbModeRequest>) -> impl IntoRe
     }
 }
 
-/// POST /api/usb-advance - 热切换USB模式（立即生效，无需重启）
+/// POST /api/usb-advance - 热切换 USB 模式（立即生效，无需重启）
 ///
 /// 高级接口：直接操作 configfs 实现热切换
 ///
@@ -973,7 +973,7 @@ pub async fn get_system_stats() -> impl IntoResponse {
 
 /// GET /api/location/cell-info - 获取基站定位参数
 /// 
-/// 返回格式化的基站定位参数，可用于调用第三方定位API（如Google Geolocation、OpenCellID等）
+/// 返回格式化的基站定位参数，可用于调用第三方定位 API（如 Google Geolocation、OpenCellID 等）
 pub async fn get_cell_location_info(State(conn): State<Arc<Connection>>) -> impl IntoResponse {
     // 获取网络信息（MCC、MNC）
     let network_info = match get_network_info_data(&conn).await {
@@ -1180,8 +1180,8 @@ pub async fn get_cell_location_info(State(conn): State<Arc<Connection>>) -> impl
 /// GET /api/network/interfaces - 获取所有网络接口详细信息
 /// 
 /// 返回所有网络接口的详细信息，包括：
-/// - 接口名称、状态、MAC地址、MTU
-/// - IPv4和IPv6地址列表
+/// - 接口名称、状态、MAC 地址、MTU
+/// - IPv4 和 IPv6 地址列表
 /// - 公网/内网地址分类
 /// - 流量统计（接收/发送字节数、包数、错误数）
 pub async fn get_network_interfaces_info() -> impl IntoResponse {

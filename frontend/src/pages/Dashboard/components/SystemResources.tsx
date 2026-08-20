@@ -43,7 +43,7 @@ export function SystemResources({ systemStats }: SystemResourcesProps) {
               <Box display="flex" alignItems="center" gap={0.5}>
                 <Speed fontSize="small" color="action" />
                 <Typography variant="caption" color="text.secondary">
-                  CPU ({systemStats?.cpu_load?.core_count || '-'}核)
+                  CPU ({systemStats?.cpu_load?.core_count || '-'} 核)
                 </Typography>
                 {systemStats?.cpu_load && (
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', ml: 0.5 }}>

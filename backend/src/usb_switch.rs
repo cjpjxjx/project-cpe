@@ -269,7 +269,7 @@ fn read_serial_number() -> String {
         if let Ok(mac) = fs::read_to_string(&mac_path) {
             let mac = mac.trim().replace(":", "").to_uppercase();
             if mac.len() >= 12 {
-                // 使用 MAC 地址作为序列号（16位：UDX + 12位MAC + 1位）
+                // 使用 MAC 地址作为序列号（16 位：UDX + 12 位 MAC + 1 位）
                 return format!("UDX{}1", &mac[..12]);
             }
         }

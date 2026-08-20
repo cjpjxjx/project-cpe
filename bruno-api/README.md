@@ -5,16 +5,19 @@
 ## 文件列表
 
 ### 基础信息接口
+
 - **get_device_info.bru** - 获取设备信息（IMEI、制造商、型号、在线状态）
 - **get_sim_info.bru** - 获取 SIM 卡信息（ICCID、IMSI、手机号、MCC/MNC 等）
 - **get_health.bru** - 健康检查
 
 ### 网络相关接口
+
 - **get_network_info.bru** - 获取网络信息（运营商、注册状态等）
 - **get_cells_info.bru** - 获取小区信息（主小区+邻区）
 - **get_qos_info.bru** - 获取 QoS 信息
 
 ### 数据连接接口
+
 - **get_data_status.bru** - 获取数据连接状态
 - **set_data_status_enable.bru** - 启用数据连接（自动清空 iptables 规则）
 - **set_data_status_disable.bru** - 禁用数据连接（自动清空 iptables 规则）
@@ -27,6 +30,7 @@
 **漫游说明**：插入境外 SIM 卡时，如果网络注册状态为 `roaming`，需要启用漫游开关才能使用数据连接。
 
 ### USB 模式接口
+
 - **get_usb_mode.bru** - 获取当前 USB 模式（包括硬件状态和配置文件）
 - **set_usb_mode_ncm.bru** - 设置 USB 为 NCM 模式（临时模式，重启生效）
 - **set_usb_mode_ecm.bru** - 设置 USB 为 ECM 模式（临时模式，重启生效）
@@ -40,30 +44,37 @@
 - **高级接口** (`/api/usb-advance`)：直接操作 configfs 热切换，无需重启（不写入配置文件）
 
 ### AT 指令接口
+
 - **post_at_command.bru** - 发送 AT 指令
 
 ### 飞行模式接口
+
 - **get_airplane_mode.bru** - 获取飞行模式状态
 - **set_airplane_mode_enable.bru** - 启用飞行模式（关闭射频）
 - **set_airplane_mode_disable.bru** - 禁用飞行模式（开启射频）
 
 ### 系统统计接口
-- **get_stats.bru** - 获取综合系统统计（网速+内存+CPU+运行时间+温度+USB模式）
-- **get_cpu_info.bru** - 获取CPU详细信息
+
+- **get_stats.bru** - 获取综合系统统计（网速+内存+CPU+运行时间+温度+USB 模式）
+- **get_cpu_info.bru** - 获取 CPU 详细信息
 
 ### 定位相关接口
+
 - **get_cell_location_info.bru** - 获取基站定位参数（MCC/MNC/LAC/CID）
 
 ### 网络接口详情
+
 - **get_network_interfaces.bru** - 获取所有网络接口详情（IP/MAC/流量统计）
 
 ### 射频模式接口（4G/5G 切换）
+
 - **get_radio_mode.bru** - 获取当前射频模式
 - **set_radio_mode_auto.bru** - 设置为 4G/5G 自动模式
 - **set_radio_mode_lte.bru** - 设置为仅 4G LTE 模式
 - **set_radio_mode_nr.bru** - 设置为仅 5G NR 模式
 
 ### 频段锁定接口
+
 - **get_band_lock.bru** - 获取当前频段锁定状态
 - **set_band_lock_lte_b1_b3.bru** - 锁定 LTE B1+B3（示例）
 - **set_band_lock_nr_n78.bru** - 锁定 NR N78（示例）
@@ -71,9 +82,11 @@
 - **unlock_all_bands.bru** - 解除所有频段锁定
 
 ### 系统控制接口
+
 - **post_system_reboot.bru** - 系统重启（可设置延迟秒数）
 
 ### OTA 更新接口
+
 - **get_ota_status.bru** - 获取 OTA 更新状态（当前版本、待安装更新）
 - **post_ota_apply.bru** - 应用 OTA 更新（不重启）
 - **post_ota_apply_restart.bru** - 应用 OTA 更新并立即重启
@@ -88,6 +101,7 @@
 - 上传接口 `/api/ota/upload` 使用 `application/octet-stream`，直接发送 OTA 压缩包二进制内容
 
 ### 电话功能接口
+
 - **get_calls.bru** - 获取当前通话列表
 - **post_call_dial.bru** - 拨打电话
 - **post_call_hangup.bru** - 挂断指定通话
@@ -95,12 +109,14 @@
 - **post_call_answer.bru** - 接听来电
 
 ### 短信功能接口
+
 - **post_sms_send.bru** - 发送短信
 - **get_sms_list.bru** - 获取短信列表（分页）
 - **get_sms_stats.bru** - 获取短信统计
 - **post_sms_clear.bru** - 清空所有短信历史
 
-### 新增功能接口
+### 信号与 IMS 接口
+
 - **get_imeisv.bru** - 获取 IMEISV（软件版本号）
 - **get_signal_strength.bru** - 获取信号强度详细信息
 - **get_nitz_time.bru** - 获取 NITZ 网络时间
@@ -109,7 +125,7 @@
 - **set_call_volume.bru** - 设置通话音量
 - **get_voicemail_status.bru** - 获取语音留言状态
 - **get_operators.bru** - 获取当前运营商
-- **scan_operators.bru** - 扫描所有可用运营商（慢，120秒）
+- **scan_operators.bru** - 扫描所有可用运营商（慢，120 秒）
 - **register_operator_manual.bru** - 手动注册到指定运营商
 - **register_operator_auto.bru** - 自动注册运营商
 - **get_call_forwarding.bru** - 获取呼叫转移设置
@@ -118,15 +134,18 @@
 - **set_call_settings.bru** - 设置通话设置
 
 ### APN 管理接口
+
 - **get_apn_list.bru** - 获取 APN 配置列表
 - **set_apn.bru** - 设置 APN 配置
 
 ### 通话记录接口
+
 - **get_call_history.bru** - 获取通话记录列表（分页）
 - **delete_call_history.bru** - 删除单条通话记录
 - **clear_call_history.bru** - 清空所有通话记录
 
 ### Webhook 配置接口
+
 - **get_webhook_config.bru** - 获取 Webhook 配置
 - **set_webhook_config.bru** - 设置 Webhook 配置
 - **test_webhook.bru** - 测试 Webhook 连接
@@ -172,7 +191,7 @@
 | GET | `/api/airplane-mode` | 飞行模式状态 |
 | POST | `/api/airplane-mode` | 设置飞行模式 |
 | GET | `/api/stats` | 综合系统统计（网速+内存+运行时间+系统信息） |
-| GET | `/api/stats/cpu` | CPU信息 |
+| GET | `/api/stats/cpu` | CPU 信息 |
 | GET | `/api/location/cell-info` | 基站定位参数 |
 | GET | `/api/network/interfaces` | 网络接口详情 |
 | GET | `/api/radio-mode` | 射频模式（Auto/LTE/NR） |

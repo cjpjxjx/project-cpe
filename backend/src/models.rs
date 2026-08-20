@@ -10,7 +10,7 @@
  */
 //! 数据模型定义
 //! 
-//! 包含所有API的请求和响应数据结构
+//! 包含所有 API 的请求和响应数据结构
 
 use serde::{Deserialize, Serialize};
 
@@ -63,7 +63,7 @@ pub struct AtCommandRequest {
 pub struct ServingCell {
     /// 网络制式：nr, lte, unknown
     pub tech: String,
-    /// 小区ID
+    /// 小区 ID
     pub cell_id: u32,
     /// 跟踪区域码
     pub tac: u32,
@@ -71,7 +71,7 @@ pub struct ServingCell {
 
 /// 小区详细信息
 /// 
-/// 所有信号强度字段均为原始值（×100），前端需要除以100得到实际dBm/dB值
+/// 所有信号强度字段均为原始值（×100），前端需要除以 100 得到实际 dBm/dB 值
 #[derive(Debug, Default, Serialize, Clone)]
 pub struct CellInfo {
     /// 是否为主服务小区
@@ -84,11 +84,11 @@ pub struct CellInfo {
     pub arfcn: String,
     /// 物理小区标识（PCI）
     pub pci: String,
-    /// 参考信号接收功率（RSRP）原始值×100，实际单位dBm，前端需除以100
+    /// 参考信号接收功率（RSRP）原始值 ×100，实际单位 dBm，前端需除以 100
     pub rsrp: String,
-    /// 参考信号接收质量（RSRQ）原始值×100，实际单位dB，前端需除以100  
+    /// 参考信号接收质量（RSRQ）原始值 ×100，实际单位 dB，前端需除以 100
     pub rsrq: String,
-    /// 信噪比（SINR）原始值×100，实际单位dB，前端需除以100
+    /// 信噪比（SINR）原始值 ×100，实际单位 dB，前端需除以 100
     pub sinr: String,
 }
 
@@ -239,21 +239,21 @@ pub struct NetworkInfoResponse {
 }
 
 
-/// QoS信息响应
+/// QoS 信息响应
 #[derive(Debug, Serialize, Default)]
 pub struct QosInfoResponse {
-    /// QCI等级 (Quality of Service Class Identifier)
+    /// QCI 等级 (Quality of Service Class Identifier)
     pub qci: u8,
     /// 下行速率 (kbit/s)
     pub dl_speed: u32,
     /// 上行速率 (kbit/s)
     pub ul_speed: u32,
-    /// 原始AT响应（可选，用于调试）
+    /// 原始 AT 响应（可选，用于调试）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_response: Option<String>,
 }
 
-/// USB模式枚举
+/// USB 模式枚举
 /// 1 = CDC-NCM, 2 = CDC-ECM, 3 = RNDIS
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -264,17 +264,17 @@ pub enum UsbMode {
     Rndis = 3,
 }
 
-/// 设置USB模式请求
+/// 设置 USB 模式请求
 #[derive(Debug, Deserialize)]
 pub struct SetUsbModeRequest {
-    /// USB模式：1=CDC-NCM, 2=CDC-ECM, 3=RNDIS
+    /// USB 模式：1=CDC-NCM, 2=CDC-ECM, 3=RNDIS
     pub mode: u8,
     /// 是否永久保存：true=写入/mnt/data/mode.cfg（永久），false=写入/mnt/data/mode_tmp.cfg（临时）
     #[serde(default)]
     pub permanent: bool,
 }
 
-/// USB模式查询响应
+/// USB 模式查询响应
 #[derive(Debug, Serialize, Default)]
 pub struct UsbModeResponse {
     /// 当前硬件实际运行的模式（始终从 configfs 读取）
@@ -287,7 +287,7 @@ pub struct UsbModeResponse {
     pub temporary_mode: Option<u8>,
     /// 是否需要重启生效（始终为 true，因为配置文件在启动时读取）
     pub needs_reboot: bool,
-    /// 读取来源：hardware=从VID/PID读取, file=从配置文件读取
+    /// 读取来源：hardware=从 VID/PID 读取, file=从配置文件读取
     pub read_mode: String,
 }
 
@@ -483,7 +483,7 @@ pub struct CpuInfo {
 }
 
 /// 基站定位参数
-/// 用于通过第三方API（如Google Geolocation、OpenCellID等）进行基站定位
+/// 用于通过第三方 API（如 Google Geolocation、OpenCellID 等）进行基站定位
 #[derive(Debug, Serialize, Default)]
 pub struct CellLocationInfo {
     /// 移动国家代码（如460=中国）
@@ -492,7 +492,7 @@ pub struct CellLocationInfo {
     pub mnc: String,
     /// 位置区码/跟踪区码（LAC/TAC）
     pub lac: u32,
-    /// 小区ID（Cell ID）
+    /// 小区 ID（Cell ID）
     pub cid: u32,
     /// 信号强度（RSRP，单位：dBm）
     pub signal_strength: i32,
@@ -526,14 +526,14 @@ pub struct CellLocationResponse {
     pub usage_hint: String,
 }
 
-/// IP地址信息
+/// IP 地址信息
 #[derive(Debug, Serialize, Clone)]
 pub struct IpAddress {
-    /// IP地址
+    /// IP 地址
     pub address: String,
     /// 前缀长度（子网掩码位数）
     pub prefix_len: u8,
-    /// IP类型：ipv4 或 ipv6
+    /// IP 类型：ipv4 或 ipv6
     pub ip_type: String,
     /// 地址范围：private（内网）, public（公网）, loopback（回环）, link-local（链路本地）
     pub scope: String,
@@ -546,12 +546,12 @@ pub struct NetworkInterfaceInfo {
     pub name: String,
     /// 接口状态：up, down
     pub status: String,
-    /// MAC地址
+    /// MAC 地址
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mac_address: Option<String>,
     /// MTU（最大传输单元）
     pub mtu: u32,
-    /// IP地址列表（IPv4和IPv6）
+    /// IP 地址列表（IPv4 和 IPv6）
     pub ip_addresses: Vec<IpAddress>,
     /// 接收字节数
     pub rx_bytes: u64,

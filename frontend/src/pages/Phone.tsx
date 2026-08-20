@@ -770,7 +770,7 @@ export default function PhonePage() {
                     />
                     {forwardType === 'noreply' && (
                       <Box mb={2}>
-                        <Typography variant="body2" gutterBottom>超时: {forwardTimeout}秒</Typography>
+                        <Typography variant="body2" gutterBottom>超时: {forwardTimeout} 秒</Typography>
                         <Slider value={forwardTimeout} onChange={(_, v: number | number[]) => setForwardTimeout(Array.isArray(v) ? v[0] : v)} min={5} max={60} step={5} marks valueLabelDisplay="auto" />
                       </Box>
                     )}

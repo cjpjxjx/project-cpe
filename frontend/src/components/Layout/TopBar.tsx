@@ -103,7 +103,7 @@ export default function TopBar({
 
   const getRefreshLabel = () => {
     if (refreshInterval === 0) return '手动'
-    return `${refreshInterval / 1000}秒`
+    return `${refreshInterval / 1000} 秒`
   }
 
   const getThemeLabel = () => {
@@ -282,25 +282,25 @@ export default function TopBar({
             selected={refreshInterval === 5000}
             onClick={() => handleRefreshIntervalChange(5000)}
           >
-            5秒/次
+            5 秒/次
           </MenuItem>
           <MenuItem
             selected={refreshInterval === 10000}
             onClick={() => handleRefreshIntervalChange(10000)}
           >
-            10秒/次
+            10 秒/次
           </MenuItem>
           <MenuItem
             selected={refreshInterval === 30000}
             onClick={() => handleRefreshIntervalChange(30000)}
           >
-            30秒/次
+            30 秒/次
           </MenuItem>
           <MenuItem
             selected={refreshInterval === 60000}
             onClick={() => handleRefreshIntervalChange(60000)}
           >
-            60秒/次
+            60 秒/次
           </MenuItem>
           <Divider />
           <MenuItem

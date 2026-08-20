@@ -63,7 +63,7 @@ pub trait ConnectionContext {
     assume_defaults = true
 )]
 pub trait SimManager {
-    /// 获取SIM卡所有属性
+    /// 获取 SIM 卡所有属性
     fn get_properties(&self) -> zbus::Result<HashMap<String, zbus::zvariant::OwnedValue>>;
 }
 
@@ -969,13 +969,13 @@ pub async fn get_device_info_data(conn: &Connection) -> zbus::Result<DeviceInfoR
     })
 }
 
-/// 获取QoS信息
+/// 获取 QoS 信息
 ///
 /// # Arguments
 /// * `conn` - D-Bus 连接
 ///
 /// # Returns
-/// QoS信息结构
+/// QoS 信息结构
 pub async fn get_qos_info_data(conn: &Connection) -> zbus::Result<QosInfoResponse> {
     let response = send_at_command(conn, "AT+CGEQOSRDP").await?;
     
@@ -985,7 +985,7 @@ pub async fn get_qos_info_data(conn: &Connection) -> zbus::Result<QosInfoRespons
     Ok(parsed)
 }
 
-/// 解析QoS响应
+/// 解析 QoS 响应
 ///
 /// 格式: +CGEQOSRDP: <cid>,<QCI>,[<DL_GBR>,<UL_GBR>],[<DL_MBR>,<UL_MBR>],[<DL_AMBR>,<UL_AMBR>]
 /// 示例: +CGEQOSRDP: 11,5,0,0,0,0,30000,30000

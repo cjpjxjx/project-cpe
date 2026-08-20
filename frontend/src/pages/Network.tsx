@@ -1325,11 +1325,11 @@ export default function NetworkPage() {
                 />
                 <CardContent>
                   <Grid container spacing={2}>
-                    {/* IP地址列表 */}
+                    {/* IP 地址列表 */}
                     <Grid size={{ xs: 12, md: 6 }}>
                       <Typography variant="subtitle2" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <SignalCellularAlt fontSize="small" />
-                        IP地址
+                        IP 地址
                       </Typography>
                       <Divider sx={{ mb: 1 }} />
                       {iface.ip_addresses.length > 0 ? (
@@ -1365,7 +1365,7 @@ export default function NetworkPage() {
                           </Table>
                         </TableContainer>
                       ) : (
-                        <Typography variant="body2" color="text.secondary">无IP地址</Typography>
+                        <Typography variant="body2" color="text.secondary">无 IP 地址</Typography>
                       )}
                     </Grid>
 

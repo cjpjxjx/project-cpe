@@ -339,7 +339,7 @@ pub fn parse_neighbor_cells(tech: &str, parsed_data: &[Vec<String>]) -> Vec<Cell
                     // 返回原始值×100，不做除法，让前端处理单位转换
                     rsrp: row[2].clone(),
                     rsrq: row[3].clone(),
-                    sinr: "-".to_string(),  // LTE邻区不提供SINR
+                    sinr: "-".to_string(),  // LTE 邻区不提供 SINR
                 };
                 
                 result.push(cell);
@@ -922,7 +922,7 @@ fn identify_cpu_model(implementer: &str, part: &str) -> String {
     format!("CPU (implementer: {}, part: {})", implementer, part)
 }
 
-/// 判断IP地址范围（公网/内网/回环/链路本地）
+/// 判断 IP 地址范围（公网/内网/回环/链路本地）
 fn get_ip_scope(ip: &IpAddr) -> String {
     match ip {
         IpAddr::V4(ipv4) => {
@@ -958,13 +958,13 @@ fn get_ip_scope(ip: &IpAddr) -> String {
     }
 }
 
-/// 读取网络接口的IP地址信息
+/// 读取网络接口的 IP 地址信息
 fn read_interface_ip_addresses(interface: &str) -> Result<Vec<IpAddress>, String> {
     use std::process::Command;
     
     let mut addresses = Vec::new();
     
-    // 使用 ip addr show 命令获取接口的IP地址
+    // 使用 ip addr show 命令获取接口的 IP 地址
     let output = Command::new("ip")
         .args(&["addr", "show", "dev", interface])
         .output()
@@ -989,7 +989,7 @@ fn read_interface_ip_addresses(interface: &str) -> Result<Vec<IpAddress>, String
             let ip_type = if parts[0] == "inet" { "ipv4" } else { "ipv6" };
             let addr_with_prefix = parts[1];
             
-            // 分离IP地址和前缀长度
+            // 分离 IP 地址和前缀长度
             if let Some((addr_str, prefix_str)) = addr_with_prefix.split_once('/') {
                 if let Ok(ip) = addr_str.parse::<IpAddr>() {
                     let prefix_len = prefix_str.parse::<u8>().unwrap_or(0);
@@ -1037,7 +1037,7 @@ pub fn read_network_interfaces() -> Result<Vec<NetworkInterfaceInfo>, String> {
             .trim()
             .to_lowercase();
         
-        // 读取MAC地址
+        // 读取 MAC 地址
         let mac_address = fs::read_to_string(interface_path.join("address"))
             .ok()
             .map(|s| s.trim().to_string())
@@ -1076,7 +1076,7 @@ pub fn read_network_interfaces() -> Result<Vec<NetworkInterfaceInfo>, String> {
             .and_then(|s| s.trim().parse::<u64>().ok())
             .unwrap_or(0);
         
-        // 读取IP地址信息
+        // 读取 IP 地址信息
         let ip_addresses = read_interface_ip_addresses(&interface_name).unwrap_or_default();
         
         interfaces.push(NetworkInterfaceInfo {
