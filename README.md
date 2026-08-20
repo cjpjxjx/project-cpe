@@ -324,6 +324,104 @@ pub struct ApiResponse<T> {
 
 ---
 
+## 📈 性能调优（UDX710 平台）
+
+> 感谢 [@qingwei0326](https://github.com/qingwei0326) 提供本节内容（[#22](https://github.com/1orz/project-cpe/pull/22)）。
+> 这是**内核级网络调优**，不涉及本项目代码修改。
+
+### 问题背景
+
+UDX710 双核 Cortex-A55 上，Linux 默认将 5G 数据接收中断 `sipa`（IRQ 22）和 USB 出口中断 `xhci`（IRQ 97）**都绑定在 CPU0**。两条高频中断串行化在同一个核心上，导致：
+
+- 下行吞吐量被单核瓶颈限制（实测峰值仅 200–400 Mbps）
+- 系统 CPU 整体空闲率 87%，但 load average 高达 2.4–3.4（典型单核 I/O 排队表现）
+
+可通过 `cat /proc/interrupts` 确认：如果 IRQ 22 和 IRQ 97 的计数全部集中在 CPU0 列，CPU1 列为 0，则存在此瓶颈。
+
+### 优化方案
+
+两步操作：**IRQ 亲和性分离** + **RPS 软中断分散**。
+
+```bash
+# 1) 将 xhci USB 中断（IRQ 97）迁移到 CPU1
+#    注意：IRQ 编号以实际设备 /proc/interrupts 为准
+echo 2 > /proc/irq/97/smp_affinity
+
+# 2) 启用 RPS，将收包软中断分散到两个核心
+for d in sipa_eth0 usb0; do
+  for q in /sys/class/net/$d/queues/rx-*/rps_cpus; do
+    echo 3 > "$q"
+  done
+done
+
+# 3) 扩大 RPS 流表
+echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
+```
+
+### 持久化：写入项目 init.sh（推荐）
+
+上述命令重启后失效。本项目自带 **初始化脚本** 功能，可在 Web 管理界面直接编辑并持久保存：
+
+1. 打开 Web 管理后台 → 侧边栏「**初始化脚本**」页面
+2. 将以下内容追加到 init.sh 编辑区：
+
+```bash
+# === UDX710 网络性能调优 ===
+tune_net() {
+  # 动态查找 xhci 中断号，迁移到 CPU1
+  xhci_irq=$(awk '/xhci/ {print $1}' /proc/interrupts | tr -d ':')
+  if [ -n "$xhci_irq" ] && [ -w "/proc/irq/$xhci_irq/smp_affinity" ]; then
+    echo 2 > "/proc/irq/$xhci_irq/smp_affinity"
+  fi
+
+  # RPS: 收包软中断分散到双核，并设置每队列流表
+  for d in sipa_eth0 usb0; do
+    for q in /sys/class/net/$d/queues/rx-*; do
+      [ -w "$q/rps_cpus" ] && echo 3 > "$q/rps_cpus"
+      [ -w "$q/rps_flow_cnt" ] && echo 4096 > "$q/rps_flow_cnt"
+    done
+  done
+
+  # 扩大全局 RPS 流表
+  [ -w /proc/sys/net/core/rps_sock_flow_entries ] && \
+    echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
+}
+
+# 延迟执行，等待网卡就绪；重试一次以防首次过早
+( sleep 3; tune_net; sleep 5; tune_net ) &
+```
+
+3. 点击「**保存**」即可，下次开机自动生效。
+
+> **原理说明**：init.sh 由设备开机脚本 `loader.sh` 在后端服务启动后调用，通过 Web 界面编辑保存到 `/home/root/init.sh`（或 `/data/init.sh`），无需 SSH 登录设备手动操作。
+
+### 效果验证
+
+调优后可通过以下方式验证：
+
+```bash
+# 检查 IRQ 97 是否分散到 CPU1（CPU1 列应开始递增）
+cat /proc/interrupts | grep -E "22:|97:"
+
+# 检查软中断分布（NET_RX 行应双核均衡）
+cat /proc/softirqs | grep NET_RX
+
+# 观察负载变化
+uptime
+```
+
+参考实测数据（中国联通 5G NR n78，100 MHz 单载波，SINR ~10 dB）：
+
+| 指标 | 调优前 | 调优后 |
+|------|--------|--------|
+| 下行峰值 | 200–400 Mbps | 300–500 Mbps |
+| 1 分钟负载 | 3.4 | 2.2 |
+| NET_RX 分布 | CPU0 82% / CPU1 18% | CPU0 32% / CPU1 68% |
+
+> ⚠️ 实际效果因信号环境、基站负载、运营商等因素而异，以上数据仅供参考。
+
+---
+
 ## 📦 依赖
 
 - **zbus 5.x** - D-Bus 客户端
