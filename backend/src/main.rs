@@ -157,6 +157,10 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer().with_target(false))
         .init();
 
+    // 提前播种全局 CSPRNG：开机早期内核 CRNG 未就绪时 `getrandom(2)` 会阻塞，
+    // 放到独立线程等待，避免首次登录生成 session token 时卡住请求
+    auth::spawn_rng_warmup();
+
     // 解析命令行参数
     let args = Args::parse();
     let bind_addr = format!("{}:{}", args.host, args.port);

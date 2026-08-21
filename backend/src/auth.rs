@@ -4,7 +4,7 @@
 //! Session 只存内存，不落库，设备重启即失效。
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 use argon2::password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
@@ -14,7 +14,8 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use rand::RngCore;
+use rand::rngs::StdRng;
+use rand::{RngCore, SeedableRng};
 
 use crate::models::ApiResponse;
 use crate::state::AppState;
@@ -41,12 +42,59 @@ fn new_password_params() -> Params {
         .expect("hardcoded Argon2 params must be valid")
 }
 
+/// 启动时播种的全局 CSPRNG
+static SEEDED_RNG: OnceLock<Mutex<StdRng>> = OnceLock::new();
+
+/// 在独立线程里播种全局 CSPRNG，由启动流程调用。
+///
+/// 设备无硬件熵源，内核 CRNG 需累积中断熵才能就绪（`random: crng init done`，
+/// 实测约在开机 100 秒），在此之前 `getrandom(2)` 一直阻塞。播种放在独立线程
+/// 无限期等待，既不占用 tokio worker，也不落在请求路径上。
+pub fn spawn_rng_warmup() {
+    std::thread::spawn(|| {
+        let mut seed = <StdRng as SeedableRng>::Seed::default();
+        if OsRng.try_fill_bytes(seed.as_mut()).is_err() {
+            tracing::warn!("CSPRNG seeding failed, falling back to /dev/urandom");
+            return;
+        }
+        let _ = SEEDED_RNG.set(Mutex::new(StdRng::from_seed(seed)));
+        tracing::info!("CSPRNG seeded");
+    });
+}
+
+/// 填充随机字节，任何情况下都不阻塞。
+///
+/// 每次调用都现查播种状态，不依赖任何时间假设。播种未完成时回退读
+/// `/dev/urandom`：读取永不阻塞，此时输出由内核已用中断熵快速播种的 CRNG
+/// （`crng_init=1`）产生，强度低于完全就绪状态，但这是 CRNG 就绪前系统能提供
+/// 的最好熵源；播种一旦完成，后续调用自动改用 `SEEDED_RNG`。
+fn fill_random(buf: &mut [u8]) {
+    if let Some(rng) = SEEDED_RNG.get() {
+        if let Ok(mut rng) = rng.lock() {
+            rng.fill_bytes(buf);
+            return;
+        }
+    }
+
+    use std::io::Read;
+    if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
+        if file.read_exact(buf).is_ok() {
+            return;
+        }
+    }
+
+    OsRng.fill_bytes(buf);
+}
+
 /// Argon2 哈希/校验是 CPU+内存密集型阻塞操作；放到 `spawn_blocking` 里跑，
 /// 避免独占 tokio 工作线程导致其他并发请求被卡住。
 pub async fn hash_password(password: &str) -> Result<String, String> {
     let password = password.to_owned();
     tokio::task::spawn_blocking(move || {
-        let salt = SaltString::generate(&mut OsRng);
+        let mut salt_bytes = [0u8; 16];
+        fill_random(&mut salt_bytes);
+        let salt = SaltString::encode_b64(&salt_bytes)
+            .map_err(|e| format!("Failed to generate salt: {}", e))?;
         let argon2 = Argon2::new(Algorithm::default(), Version::default(), new_password_params());
         argon2
             .hash_password(password.as_bytes(), &salt)
@@ -74,7 +122,7 @@ pub async fn verify_password(password: &str, hash: &str) -> bool {
 
 pub fn generate_session_token() -> String {
     let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    fill_random(&mut bytes);
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
