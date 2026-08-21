@@ -73,6 +73,10 @@ import type {
   RefreshConfigResponse,
   OtaStatusResponse,
   OtaUploadResponse,
+  LoginRequest,
+  AuthStatusResponse,
+  AuthConfigResponse,
+  SetAuthConfigRequest,
 } from './types'
 
 // API 基础配置
@@ -84,7 +88,7 @@ async function request<T>(
   options: RequestInit & { returnText?: boolean } = {}
 ): Promise<T> {
   const { returnText, ...fetchOptions } = options
-  
+
   const response = await fetch(`${API_BASE}${url}`, {
     headers: {
       'Content-Type': 'application/json',
@@ -92,6 +96,10 @@ async function request<T>(
     },
     ...fetchOptions,
   })
+
+  if (response.status === 401) {
+    window.dispatchEvent(new Event('udx710:unauthorized'))
+  }
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`)
@@ -611,6 +619,9 @@ class UDX710API {
         'Content-Type': 'application/octet-stream',
       },
     })
+    if (response.status === 401) {
+      window.dispatchEvent(new Event('udx710:unauthorized'))
+    }
     return response.json() as Promise<ApiResponse<OtaUploadResponse>>
   }
 
@@ -626,6 +637,39 @@ class UDX710API {
   async cancelOta() {
     return request<ApiResponse<Record<string, unknown>>>('/ota/cancel', {
       method: 'POST',
+    })
+  }
+
+  // ========== 登录鉴权 ==========
+
+  async getAuthStatus() {
+    return request<ApiResponse<AuthStatusResponse>>('/auth/status')
+  }
+
+  async login(username: string, password: string) {
+    const body: LoginRequest = { username, password }
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    return response.json() as Promise<ApiResponse<Record<string, never>>>
+  }
+
+  async logout() {
+    return request<ApiResponse<Record<string, never>>>('/auth/logout', {
+      method: 'POST',
+    })
+  }
+
+  async getAuthConfig() {
+    return request<ApiResponse<AuthConfigResponse>>('/auth/config')
+  }
+
+  async setAuthConfig(config: SetAuthConfigRequest) {
+    return request<ApiResponse<Record<string, never>>>('/auth/config', {
+      method: 'POST',
+      body: JSON.stringify(config),
     })
   }
 

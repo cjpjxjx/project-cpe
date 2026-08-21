@@ -1084,6 +1084,40 @@ pub struct DeleteCallRequest {
     pub id: i64,
 }
 
+// ============ 登录鉴权模型 ============
+
+/// 登录请求
+#[derive(Debug, Deserialize, Default)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+/// 登录状态响应（公开接口，无需鉴权即可访问）
+#[derive(Debug, Serialize, Default)]
+pub struct AuthStatusResponse {
+    pub enabled: bool,
+    pub logged_in: bool,
+}
+
+/// 当前鉴权配置响应（不回传密码哈希）
+#[derive(Debug, Serialize, Default)]
+pub struct AuthConfigResponse {
+    pub enabled: bool,
+    pub username: String,
+}
+
+/// 设置鉴权配置请求
+#[derive(Debug, Deserialize, Default)]
+pub struct SetAuthConfigRequest {
+    pub enabled: bool,
+    pub username: String,
+    #[serde(default)]
+    pub current_password: Option<String>,
+    #[serde(default)]
+    pub new_password: Option<String>,
+}
+
 // ============ init.sh 管理模型 ============
 
 /// init.sh 内容响应

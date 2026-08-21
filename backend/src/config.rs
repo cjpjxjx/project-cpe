@@ -27,6 +27,7 @@ const DEFAULT_LOADER_SCRIPT: &str = r#"#!/bin/sh
 const LOADER_SCRIPT_PATH: &str = "/home/root/loader.sh";
 const INIT_SCRIPT_PATH: &str = "/home/root/init.sh";
 const INIT_SCRIPT_LOADER_COMMAND: &str = "sh /home/root/init.sh &";
+pub const TTYD_START_SCRIPT_PATH: &str = "/home/root/ttyd/start.sh";
 
 /// Webhook 配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,6 +194,17 @@ fn sanitize_refresh_interval_ms(interval_ms: u64) -> u64 {
     }
 }
 
+/// 登录鉴权配置
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AuthConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password_hash: String,
+}
+
 /// 应用配置
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
@@ -202,6 +214,8 @@ pub struct AppConfig {
     pub sms_push: SmsPushConfig,
     #[serde(default)]
     pub refresh: RefreshConfig,
+    #[serde(default)]
+    pub auth: AuthConfig,
 }
 
 
@@ -291,6 +305,18 @@ impl ConfigManager {
         {
             let mut config = self.config.write().unwrap();
             config.refresh = refresh.sanitize();
+        }
+        self.save()
+    }
+
+    pub fn get_auth(&self) -> AuthConfig {
+        self.config.read().unwrap().auth.clone()
+    }
+
+    pub fn set_auth(&self, auth: AuthConfig) -> Result<(), String> {
+        {
+            let mut config = self.config.write().unwrap();
+            config.auth = auth;
         }
         self.save()
     }
@@ -568,12 +594,186 @@ pub fn set_init_script(script: String) -> Result<crate::models::InitScriptRespon
     get_init_script()
 }
 
+/// 判断某一行是否是启动 ttyd 可执行文件的命令行
+fn is_ttyd_command_line(line: &str) -> bool {
+    let trimmed = line.trim();
+
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return false;
+    }
+
+    let without_bg = trimmed.trim_end_matches('&').trim();
+    let first_token = without_bg.split_whitespace().next().unwrap_or("");
+
+    first_token == "ttyd"
+        || first_token.rsplit('/').next() == Some("ttyd")
+}
+
+/// 从 token 列表中移除已有的 `-c user:pass` 参数（幂等处理）
+fn strip_ttyd_auth_flag(tokens: &[String]) -> Vec<String> {
+    let mut result: Vec<String> = Vec::with_capacity(tokens.len());
+    let mut skip_next = false;
+
+    for token in tokens {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if token == "-c" || token == "--credential" {
+            skip_next = true;
+            continue;
+        }
+        result.push(token.clone());
+    }
+
+    result
+}
+
+/// 在 ttyd 启动脚本内容中插入 `-c user:pass` 认证参数
+///
+/// 认证参数插入在可执行文件名紧后、其余参数之前，而不是行尾——ttyd 的调用行
+/// 末尾常跟着要执行的 shell 命令（如 `./ttyd -p 7681 sh &`），追加到行尾会被
+/// 误当作该命令的参数，导致 `-c` 选项对 ttyd 本身不生效。
+///
+/// 找不到可识别的 ttyd 命令行时返回 `None`，调用方应记录警告并跳过写入，
+/// 避免破坏未知格式的外部脚本文件。
+fn patch_ttyd_auth_line(content: &str, username: &str, password: &str) -> Option<String> {
+    let normalized = normalize_newlines(content);
+    let mut found = false;
+
+    let patched_lines: Vec<String> = normalized
+        .lines()
+        .map(|line| {
+            if found || !is_ttyd_command_line(line) {
+                return line.to_string();
+            }
+            found = true;
+
+            let leading_ws_len = line.len() - line.trim_start().len();
+            let leading_ws = &line[..leading_ws_len];
+            let trimmed = line.trim();
+
+            // 识别行尾 `&`：可能是独立 token（`cmd &`），也可能贴在最后一个
+            // token 上（`cmd&`），两种写法都要保留下来
+            let (body, has_trailing_bg) = if trimmed.ends_with('&') {
+                (trimmed[..trimmed.len() - 1].trim_end(), true)
+            } else {
+                (trimmed, false)
+            };
+
+            let raw_tokens: Vec<String> = body.split_whitespace().map(String::from).collect();
+            if raw_tokens.is_empty() {
+                return line.to_string();
+            }
+
+            let tokens = strip_ttyd_auth_flag(&raw_tokens);
+            let credential = format!("{}:{}", username, password);
+
+            let mut rebuilt = vec![tokens[0].clone(), "-c".to_string(), credential];
+            rebuilt.extend_from_slice(&tokens[1..]);
+
+            let joined = rebuilt.join(" ");
+            if has_trailing_bg {
+                format!("{}{} &", leading_ws, joined)
+            } else {
+                format!("{}{}", leading_ws, joined)
+            }
+        })
+        .collect();
+
+    if !found {
+        return None;
+    }
+
+    Some(format!("{}\n", patched_lines.join("\n")))
+}
+
+/// 将 ttyd 的 Basic Auth 凭据写入外部的 ttyd 启动脚本（`/home/root/ttyd/start.sh`）
+///
+/// 该脚本不随本仓库发布，格式未知；找不到匹配的 ttyd 命令行时仅记录警告并跳过，
+/// 不修改文件内容。
+pub fn ensure_ttyd_auth(username: &str, password: &str) -> Result<(), String> {
+    let script_path = PathBuf::from(TTYD_START_SCRIPT_PATH);
+    if !script_path.exists() {
+        warn!(path = TTYD_START_SCRIPT_PATH, "ttyd start script not found, skip auth patch");
+        return Ok(());
+    }
+
+    let current_content = fs::read_to_string(&script_path)
+        .map_err(|e| format!("Failed to read ttyd start script: {}", e))?;
+
+    match patch_ttyd_auth_line(&current_content, username, password) {
+        Some(updated_content) => {
+            fs::write(&script_path, updated_content)
+                .map_err(|e| format!("Failed to write ttyd start script: {}", e))?;
+            set_executable_permissions(&script_path)?;
+            Ok(())
+        }
+        None => {
+            warn!(
+                path = TTYD_START_SCRIPT_PATH,
+                "Could not find ttyd command line in start script, skip auth patch"
+            );
+            Ok(())
+        }
+    }
+}
+
+/// 从 ttyd 启动脚本中移除 `-c user:pass` 认证参数（关闭鉴权时调用）
+pub fn clear_ttyd_auth() -> Result<(), String> {
+    let script_path = PathBuf::from(TTYD_START_SCRIPT_PATH);
+    if !script_path.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(&script_path)
+        .map_err(|e| format!("Failed to read ttyd start script: {}", e))?;
+
+    let normalized = normalize_newlines(&content);
+    let mut found = false;
+    let updated: Vec<String> = normalized
+        .lines()
+        .map(|line| {
+            if !is_ttyd_command_line(line) {
+                return line.to_string();
+            }
+            found = true;
+
+            let leading_ws_len = line.len() - line.trim_start().len();
+            let leading_ws = &line[..leading_ws_len];
+            let trimmed = line.trim();
+
+            let (body, has_trailing_bg) = if trimmed.ends_with('&') {
+                (trimmed[..trimmed.len() - 1].trim_end(), true)
+            } else {
+                (trimmed, false)
+            };
+
+            let raw_tokens: Vec<String> = body.split_whitespace().map(String::from).collect();
+            let tokens = strip_ttyd_auth_flag(&raw_tokens);
+            let joined = tokens.join(" ");
+            if has_trailing_bg {
+                format!("{}{} &", leading_ws, joined)
+            } else {
+                format!("{}{}", leading_ws, joined)
+            }
+        })
+        .collect();
+
+    if found {
+        fs::write(&script_path, format!("{}\n", updated.join("\n")))
+            .map_err(|e| format!("Failed to write ttyd start script: {}", e))?;
+        set_executable_permissions(&script_path)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         append_init_command_to_loader,
         loader_contains_init_command,
         loader_contains_ota_command,
+        patch_ttyd_auth_line,
         remove_ota_command_from_loader,
         INIT_SCRIPT_LOADER_COMMAND,
     };
@@ -617,5 +817,41 @@ mod tests {
 
         assert!(!loader_contains_ota_command(&updated));
         assert!(updated.contains("/home/root/udx710 -p 80 &"));
+    }
+
+    #[test]
+    fn patch_ttyd_auth_line_inserts_credential() {
+        let script = "#!/bin/sh\n/home/root/ttyd/ttyd -p 7681 -i eth0 bash &\n";
+        let updated = patch_ttyd_auth_line(script, "admin", "secret").unwrap();
+
+        assert!(updated.contains("-c admin:secret"));
+        assert!(updated.trim_end().ends_with('&'));
+    }
+
+    #[test]
+    fn patch_ttyd_auth_line_is_idempotent() {
+        let script = "#!/bin/sh\n/home/root/ttyd/ttyd -p 7681 -c admin:old bash &\n";
+        let updated = patch_ttyd_auth_line(script, "admin", "new").unwrap();
+
+        assert_eq!(updated.matches("-c ").count(), 1);
+        assert!(updated.contains("-c admin:new"));
+        assert!(!updated.contains("admin:old"));
+    }
+
+    #[test]
+    fn patch_ttyd_auth_line_returns_none_when_no_ttyd_line() {
+        let script = "#!/bin/sh\necho hello &\n";
+        assert!(patch_ttyd_auth_line(script, "admin", "secret").is_none());
+    }
+
+    #[test]
+    fn patch_ttyd_auth_line_inserts_before_trailing_shell_command() {
+        // 真实设备上的 ttyd/start.sh：ttyd 后面跟着要执行的 `sh` 命令，
+        // 认证参数必须插在可执行文件名之后、`sh` 命令之前，不能追加到行尾
+        let script = "#!/bin/sh\ncd /home/root/ttyd/\nchmod 755 *\n./ttyd -W -p 7681 sh &\n";
+        let updated = patch_ttyd_auth_line(script, "admin", "secret").unwrap();
+
+        assert!(updated.contains("./ttyd -c admin:secret -W -p 7681 sh &"));
+        assert!(!updated.contains("sh -c admin:secret"));
     }
 }

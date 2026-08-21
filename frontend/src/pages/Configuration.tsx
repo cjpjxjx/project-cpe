@@ -49,10 +49,12 @@ import {
   Sms,
   Add,
   PlayArrow,
+  Security,
 } from '@mui/icons-material'
 import { api } from '../api'
 import ErrorSnackbar from '../components/ErrorSnackbar'
 import { useRefreshInterval } from '../contexts/RefreshContext'
+import { useAuth } from '../contexts/AuthContext'
 import type { UsbModeResponse, AirplaneModeResponse, WebhookConfig, SmsPushConfig, SmsPushProvider } from '../api/types'
 import { DEFAULT_SMS_TEMPLATE, DEFAULT_CALL_TEMPLATE, DEFAULT_SMS_PUSH_TITLE_TEMPLATE, DEFAULT_SMS_PUSH_BODY_TEMPLATE } from '../api/types'
 
@@ -191,6 +193,13 @@ export default function ConfigurationPage() {
   const [smsPushLoading, setSmsPushLoading] = useState(false)
   const [smsPushTesting, setSmsPushTesting] = useState(false)
 
+  const { enabled: authEnabled, refreshStatus: refreshAuthStatus } = useAuth()
+  const [authUsername, setAuthUsername] = useState('')
+  const [authCurrentPassword, setAuthCurrentPassword] = useState('')
+  const [authNewPassword, setAuthNewPassword] = useState('')
+  const [authConfirmPassword, setAuthConfirmPassword] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+
   const checkHealth = useCallback(async () => {
     setHealthLoading(true)
     try {
@@ -214,14 +223,15 @@ export default function ConfigurationPage() {
     setError(null)
     
     try {
-      const [dataRes, usbRes, airplaneModeRes, webhookRes, smsPushRes] = await Promise.all([
+      const [dataRes, usbRes, airplaneModeRes, webhookRes, smsPushRes, authRes] = await Promise.all([
         api.getDataStatus(),
         api.getUsbMode(),
         api.getAirplaneMode(),
         api.getWebhookConfig(),
         api.getSmsPushConfig(),
+        api.getAuthConfig(),
       ])
-      
+
       if (dataRes.data) setDataStatus(dataRes.data.active)
       if (usbRes.data) {
         setUsbMode(usbRes.data)
@@ -230,6 +240,7 @@ export default function ConfigurationPage() {
       if (airplaneModeRes.data) setAirplaneMode(airplaneModeRes.data)
       if (webhookRes.data) setWebhookConfig(webhookRes.data)
       if (smsPushRes.data) setSmsPushConfig(normalizeSmsPushConfig(smsPushRes.data))
+      if (authRes.data) setAuthUsername(authRes.data.username)
 
       // 加载健康检查
       await checkHealth()
@@ -394,6 +405,103 @@ export default function ConfigurationPage() {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setWebhookTesting(false)
+    }
+  }
+
+  const handleEnableAuth = async () => {
+    if (!authUsername.trim() || !authNewPassword) {
+      setError('请填写用户名和密码')
+      return
+    }
+    if (authNewPassword !== authConfirmPassword) {
+      setError('两次输入的密码不一致')
+      return
+    }
+    setAuthLoading(true)
+    setError(null)
+    try {
+      const response = await api.setAuthConfig({
+        enabled: true,
+        username: authUsername.trim(),
+        new_password: authNewPassword,
+      })
+      if (response.status === 'ok') {
+        setSuccess('登录鉴权已启用')
+        setAuthNewPassword('')
+        setAuthConfirmPassword('')
+        await refreshAuthStatus()
+      } else {
+        setError(response.message)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (!authCurrentPassword) {
+      setError('请输入当前密码')
+      return
+    }
+    if (!authNewPassword) {
+      setError('请输入新密码')
+      return
+    }
+    if (authNewPassword !== authConfirmPassword) {
+      setError('两次输入的新密码不一致')
+      return
+    }
+    setAuthLoading(true)
+    setError(null)
+    try {
+      const response = await api.setAuthConfig({
+        enabled: true,
+        username: authUsername.trim(),
+        current_password: authCurrentPassword,
+        new_password: authNewPassword,
+      })
+      if (response.status === 'ok') {
+        setSuccess('密码已修改，请重新登录')
+        setAuthCurrentPassword('')
+        setAuthNewPassword('')
+        setAuthConfirmPassword('')
+        await refreshAuthStatus()
+      } else {
+        setError(response.message)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  const handleDisableAuth = async () => {
+    if (!authCurrentPassword) {
+      setError('请输入当前密码以确认关闭')
+      return
+    }
+    setAuthLoading(true)
+    setError(null)
+    try {
+      const response = await api.setAuthConfig({
+        enabled: false,
+        username: authUsername.trim(),
+        current_password: authCurrentPassword,
+      })
+      if (response.status === 'ok') {
+        setSuccess('登录鉴权已关闭')
+        setAuthCurrentPassword('')
+        await refreshAuthStatus()
+      } else {
+        setError(response.message)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAuthLoading(false)
     }
   }
 
@@ -1321,6 +1429,125 @@ export default function ConfigurationPage() {
             <Alert severity="info" sx={{ mt: 2 }}>
               提示：测试会发送一条模拟短信，建议先确认凭证、服务地址和主题是否填写正确。
             </Alert>
+          </AccordionDetails>
+        </Accordion>
+
+        {/* 账户安全 */}
+        <Accordion
+          expanded={expanded === 'auth'}
+          onChange={handleAccordionChange('auth')}
+        >
+          <AccordionSummary expandIcon={<ExpandMore />}>
+            <Box display="flex" alignItems="center" gap={1} width="100%">
+              <Security color={authEnabled ? 'success' : 'primary'} />
+              <Typography fontWeight={600}>账户安全</Typography>
+              <Box flexGrow={1} />
+              <Chip
+                label={authEnabled ? '已启用' : '未启用'}
+                color={authEnabled ? 'success' : 'default'}
+                size="small"
+                onClick={(e: MouseEvent) => e.stopPropagation()}
+              />
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Typography variant="body2" color="text.secondary" paragraph>
+              启用登录鉴权后，访问 Web 管理界面需要输入用户名和密码；同一密码也会用于 Web 终端（ttyd）的访问认证。
+            </Typography>
+
+            <Divider sx={{ my: 2 }} />
+
+            {!authEnabled ? (
+              <Box display="flex" flexDirection="column" gap={2}>
+                <TextField
+                  label="用户名"
+                  value={authUsername}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setAuthUsername(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="密码"
+                  type="password"
+                  value={authNewPassword}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setAuthNewPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="确认密码"
+                  type="password"
+                  value={authConfirmPassword}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setAuthConfirmPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => void handleEnableAuth()}
+                  disabled={authLoading}
+                  startIcon={authLoading ? <CircularProgress size={20} /> : undefined}
+                >
+                  {authLoading ? '启用中...' : '启用登录鉴权'}
+                </Button>
+              </Box>
+            ) : (
+              <Box display="flex" flexDirection="column" gap={2}>
+                <Typography variant="body2">
+                  当前用户名：<strong>{authUsername}</strong>
+                </Typography>
+
+                <Divider />
+
+                <Typography variant="subtitle2">修改密码</Typography>
+                <TextField
+                  label="当前密码"
+                  type="password"
+                  value={authCurrentPassword}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setAuthCurrentPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="新密码"
+                  type="password"
+                  value={authNewPassword}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setAuthNewPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <TextField
+                  label="确认新密码"
+                  type="password"
+                  value={authConfirmPassword}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setAuthConfirmPassword(e.target.value)}
+                  fullWidth
+                  size="small"
+                />
+                <Button
+                  variant="contained"
+                  onClick={() => void handleChangePassword()}
+                  disabled={authLoading}
+                  startIcon={authLoading ? <CircularProgress size={20} /> : undefined}
+                >
+                  {authLoading ? '保存中...' : '修改密码'}
+                </Button>
+
+                <Divider sx={{ my: 1 }} />
+
+                <Alert severity="warning">
+                  关闭登录鉴权需要输入当前密码确认，关闭后任何设备都可无需登录直接访问管理界面。
+                </Alert>
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => void handleDisableAuth()}
+                  disabled={authLoading}
+                >
+                  关闭登录鉴权
+                </Button>
+              </Box>
+            )}
           </AccordionDetails>
         </Accordion>
       </Box>

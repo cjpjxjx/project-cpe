@@ -17,10 +17,10 @@ export default function Terminal() {
   const containerRef = useRef<HTMLDivElement>(null)
 
   // ttyd 运行在同一主机的 7681 端口
-  const ttydUrl = `${window.location.protocol}//${window.location.hostname}:7681`
+  const displayUrl = `${window.location.protocol}//${window.location.hostname}:7681`
 
   const handleOpenInNewTab = () => {
-    window.open(ttydUrl, '_blank')
+    window.open(displayUrl, '_blank')
   }
 
   const handleFullscreen = () => {
@@ -77,7 +77,7 @@ export default function Terminal() {
         }}
       >
         <iframe
-          src={ttydUrl}
+          src={displayUrl}
           title="Web Terminal"
           style={{
             width: '100%',
@@ -94,7 +94,7 @@ export default function Terminal() {
         color="text.secondary"
         sx={{ mt: 1, textAlign: 'center' }}
       >
-        ttyd @ {ttydUrl}
+        ttyd @ {displayUrl}
       </Typography>
     </Box>
   )

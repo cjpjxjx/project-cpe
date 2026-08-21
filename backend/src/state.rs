@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use axum::extract::FromRef;
 use zbus::Connection;
 
+use crate::auth::SessionStore;
 use crate::config::ConfigManager;
 use crate::db::Database;
 use crate::sms_push::SmsPushSender;
@@ -51,6 +52,7 @@ pub struct AppState {
     pub webhook_sender: Arc<WebhookSender>,
     pub sms_push_sender: Arc<SmsPushSender>,
     pub frontend_runtime: Arc<FrontendRuntime>,
+    pub session_store: Arc<SessionStore>,
 }
 
 impl AppState {
@@ -61,6 +63,7 @@ impl AppState {
         webhook_sender: Arc<WebhookSender>,
         sms_push_sender: Arc<SmsPushSender>,
         frontend_runtime: Arc<FrontendRuntime>,
+        session_store: Arc<SessionStore>,
     ) -> Self {
         Self {
             dbus_conn,
@@ -69,6 +72,7 @@ impl AppState {
             webhook_sender,
             sms_push_sender,
             frontend_runtime,
+            session_store,
         }
     }
 }
@@ -106,6 +110,12 @@ impl FromRef<AppState> for Arc<SmsPushSender> {
 impl FromRef<AppState> for Arc<FrontendRuntime> {
     fn from_ref(state: &AppState) -> Self {
         state.frontend_runtime.clone()
+    }
+}
+
+impl FromRef<AppState> for Arc<SessionStore> {
+    fn from_ref(state: &AppState) -> Self {
+        state.session_store.clone()
     }
 }
 

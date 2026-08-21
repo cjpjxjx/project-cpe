@@ -9,11 +9,13 @@
  * Copyright (c) 2025 by 1orz, All Rights Reserved.
  */
 import { useEffect, useRef, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Navigate, Outlet } from 'react-router-dom'
 import { Box, type Theme, useMediaQuery, useTheme } from '@mui/material'
+import CircularProgress from '@mui/material/CircularProgress'
 
 import { api } from '../../api'
 import { RefreshContext } from '../../contexts/RefreshContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { usePageVisibility } from '../../hooks/useAdaptivePolling'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
@@ -41,6 +43,7 @@ export default function MainLayout() {
   const theme = useTheme<Theme>()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const isPageVisible = usePageVisibility()
+  const { enabled: authEnabled, loggedIn, loading: authLoading } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [desktopOpen, setDesktopOpen] = useState(true)
   const [refreshInterval, setRefreshIntervalState] = useState(DEFAULT_REFRESH_INTERVAL)
@@ -142,6 +145,13 @@ export default function MainLayout() {
     <RefreshContext.Provider
       value={{ refreshInterval, setRefreshInterval, refreshKey, triggerRefresh }}
     >
+      {authLoading ? (
+        <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+          <CircularProgress />
+        </Box>
+      ) : authEnabled && !loggedIn ? (
+        <Navigate to="/login" replace />
+      ) : (
       <Box sx={{ display: 'flex', minHeight: '100vh' }}>
         <TopBar
           drawerWidth={desktopOpen ? DRAWER_WIDTH : 0}
@@ -182,6 +192,7 @@ export default function MainLayout() {
           <Outlet />
         </Box>
       </Box>
+      )}
     </RefreshContext.Provider>
   )
 }

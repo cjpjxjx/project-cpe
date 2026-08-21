@@ -27,6 +27,7 @@ import {
   RocketLaunch as InitScriptIcon,
 } from '@mui/icons-material'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { AuthProvider } from './contexts/AuthContext'
 import { queryClient } from './lib/queryClient'
 import MainLayout from './components/Layout/MainLayout'
 
@@ -41,6 +42,7 @@ const InitScript = lazy(() => import('./pages/InitScript'))
 const ATConsole = lazy(() => import('./pages/ATConsole'))
 const Terminal = lazy(() => import('./pages/Terminal'))
 const OtaUpdate = lazy(() => import('./pages/OtaUpdate'))
+const Login = lazy(() => import('./pages/Login'))
 
 // 页面加载中的 fallback
 function PageLoading() {
@@ -119,22 +121,25 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <BrowserRouter>
-          <DocumentTitleAndFavicon />
-          <Routes>
-            <Route path="/" element={<MainLayout />}>
-              {appRoutes.map((route) => (
-                <Route
-                  key={route.path ?? 'index'}
-                  index={route.index}
-                  path={route.path}
-                  element={renderLazyPage(route.component)}
-                />
-              ))}
-              {/* 旧路由重定向到网络状态页面 */}
-              <Route path="network-interfaces" element={<Navigate to="/network" replace />} />
-              <Route path="band-lock" element={<Navigate to="/network" replace />} />
-            </Route>
-          </Routes>
+          <AuthProvider>
+            <DocumentTitleAndFavicon />
+            <Routes>
+              <Route path="/login" element={renderLazyPage(Login)} />
+              <Route path="/" element={<MainLayout />}>
+                {appRoutes.map((route) => (
+                  <Route
+                    key={route.path ?? 'index'}
+                    index={route.index}
+                    path={route.path}
+                    element={renderLazyPage(route.component)}
+                  />
+                ))}
+                {/* 旧路由重定向到网络状态页面 */}
+                <Route path="network-interfaces" element={<Navigate to="/network" replace />} />
+                <Route path="band-lock" element={<Navigate to="/network" replace />} />
+              </Route>
+            </Routes>
+          </AuthProvider>
         </BrowserRouter>
       </ThemeProvider>
     </QueryClientProvider>

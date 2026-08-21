@@ -745,3 +745,28 @@ export interface OtaApplyRequest {
   restart_now: boolean
 }
 
+// ============ 登录鉴权类型 ============
+
+export interface LoginRequest {
+  username: string
+  password: string
+}
+
+export interface AuthStatusResponse {
+  enabled: boolean
+  logged_in: boolean
+}
+
+export interface AuthConfigResponse {
+  enabled: boolean
+  username: string
+}
+
+export interface SetAuthConfigRequest {
+  enabled: boolean
+  username: string
+  current_password?: string
+  new_password?: string
+}
+
+

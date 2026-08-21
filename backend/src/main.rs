@@ -36,6 +36,7 @@ use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use zbus::Connection;
 
+mod auth;
 mod config;
 mod db;
 mod dbus;
@@ -51,12 +52,14 @@ mod usb_switch;
 mod utils;
 mod webhook;
 
+use auth::auth_middleware;
 use config::{ensure_loader_hooks_init, get_default_config_path, get_persistent_root_dir, ConfigManager};
 use dbus::init_data_connection;
 use handlers::*;
 use db::Database;
 use sms_push::SmsPushSender;
 use state::{AppState, FrontendRuntime};
+use auth::SessionStore;
 use webhook::WebhookSender;
 
 /// 获取二进制文件同级目录下的 www 目录路径
@@ -194,6 +197,7 @@ async fn main() -> Result<()> {
     let webhook_sender = Arc::new(WebhookSender::new(Arc::clone(&config_manager)));
     let sms_push_sender = Arc::new(SmsPushSender::new(Arc::clone(&config_manager)));
     let frontend_runtime = Arc::new(FrontendRuntime::new());
+    let session_store = Arc::new(SessionStore::new());
     
     // 启动 SMS 监听线程
     {
@@ -240,6 +244,18 @@ async fn main() -> Result<()> {
         });
     }
 
+    // 定期清理过期 session（每 10 分钟）
+    {
+        let session_store = Arc::clone(&session_store);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(600));
+            loop {
+                interval.tick().await;
+                session_store.cleanup_expired();
+            }
+        });
+    }
+
     // CORS 配置：允许前端开发服务器跨域访问
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -254,6 +270,7 @@ async fn main() -> Result<()> {
         webhook_sender,
         sms_push_sender,
         frontend_runtime,
+        session_store,
     );
 
     // Build routes - 使用统一的 AppState
@@ -322,6 +339,11 @@ async fn main() -> Result<()> {
         .route("/api/connectivity", get(get_connectivity_check).options(options_handler))
         .route("/api/system/reboot", post(system_reboot).options(options_handler))
         .route("/api/health", get(health_check))
+        // ========== 认证接口 ==========
+        .route("/api/auth/status", get(get_auth_status).options(options_handler))
+        .route("/api/auth/login", post(post_login).options(options_handler))
+        .route("/api/auth/logout", post(post_logout).options(options_handler))
+        .route("/api/auth/config", get(get_auth_config).post(post_auth_config).options(options_handler))
         // ========== init.sh 管理接口 ==========
         .route("/api/init-script", get(get_init_script_handler).post(set_init_script_handler).options(options_handler))
         // ========== Webhook 配置接口 ==========
@@ -339,6 +361,7 @@ async fn main() -> Result<()> {
         .route("/api/ota/apply", post(apply_ota_handler).options(options_handler))
         .route("/api/ota/cancel", post(cancel_ota_handler).options(options_handler))
         // ========== 统一状态和中间件 ==========
+        .layer(axum::middleware::from_fn_with_state(app_state.clone(), auth_middleware))
         .with_state(app_state)
         .layer(cors)
         .fallback(spa_fallback);

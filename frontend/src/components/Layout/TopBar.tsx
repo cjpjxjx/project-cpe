@@ -19,6 +19,7 @@
  * Copyright (c) 2025 by 1orz, All Rights Reserved. 
  */
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   AppBar,
   Toolbar,
@@ -40,9 +41,11 @@ import {
   BrightnessAuto as AutoModeIcon,
   Speed as SpeedIcon,
   Palette as PaletteIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useRefreshInterval } from '../../contexts/RefreshContext'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface TopBarProps {
   drawerWidth: number
@@ -59,6 +62,8 @@ export default function TopBar({
 }: TopBarProps) {
   const { mode, setMode } = useTheme()
   const { triggerRefresh } = useRefreshInterval()
+  const { enabled: authEnabled, logout } = useAuth()
+  const navigate = useNavigate()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [refreshMenuAnchor, setRefreshMenuAnchor] = useState<null | HTMLElement>(null)
   const [themeMenuAnchor, setThemeMenuAnchor] = useState<null | HTMLElement>(null)
@@ -99,6 +104,11 @@ export default function TopBar({
 
   const handleRefresh = () => {
     triggerRefresh()
+  }
+
+  const handleLogout = () => {
+    handleMenuClose()
+    void logout().then(() => navigate('/login'))
   }
 
   const getRefreshLabel = () => {
@@ -218,6 +228,18 @@ export default function TopBar({
               {getRefreshLabel()}
             </Typography>
           </MenuItem>
+
+          {authEnabled && (
+            <>
+              <Divider />
+              <MenuItem onClick={handleLogout}>
+                <ListItemIcon>
+                  <LogoutIcon fontSize="small" />
+                </ListItemIcon>
+                <ListItemText>退出登录</ListItemText>
+              </MenuItem>
+            </>
+          )}
         </Menu>
 
         {/* 颜色模式子菜单 */}
