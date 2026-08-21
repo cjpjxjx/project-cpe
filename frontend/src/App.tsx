@@ -25,6 +25,7 @@ import {
   WebAsset as WebTerminalIcon,
   SystemUpdateAlt as OtaIcon,
   RocketLaunch as InitScriptIcon,
+  Login as LoginIcon,
 } from '@mui/icons-material'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { AuthProvider } from './contexts/AuthContext'
@@ -91,6 +92,14 @@ function DocumentTitleAndFavicon() {
   const location = useLocation()
 
   useEffect(() => {
+    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
+
+    if (location.pathname === '/login') {
+      document.title = 'UDX710 - 登录'
+      if (link) link.href = generateFavicon(LoginIcon)
+      return
+    }
+
     const route = appRoutes.find((r) =>
       r.index ? location.pathname === '/' : location.pathname === `/${r.path}`
     )
@@ -99,7 +108,6 @@ function DocumentTitleAndFavicon() {
     document.title = route ? `UDX710 - ${route.title}` : 'UDX710'
 
     // 更新 favicon
-    const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
     if (link && route) {
       link.href = generateFavicon(route.icon)
     }

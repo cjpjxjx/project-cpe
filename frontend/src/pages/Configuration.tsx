@@ -445,7 +445,7 @@ export default function ConfigurationPage() {
       if (response.status === 'ok') {
         setAuthNewPassword('')
         setAuthConfirmPassword('')
-        setSuccess('登录鉴权已启用')
+        setSuccess('面板登录鉴权已启用')
         // 会话已在服务端失效，倒计时期间其他后台轮询请求会先一步收到 401；
         // 压制全局兜底跳转，让下面的倒计时说了算，压制窗口结束后兜底逻辑自动恢复
         suppressUnauthorizedRedirect(3500)
@@ -501,7 +501,7 @@ export default function ConfigurationPage() {
 
   const handleDisableAuth = async () => {
     if (!authCurrentPassword) {
-      setError('请输入当前密码以关闭登录鉴权')
+      setError('请输入当前密码以关闭面板登录鉴权')
       return
     }
     setAuthLoading(true)
@@ -513,7 +513,7 @@ export default function ConfigurationPage() {
         current_password: authCurrentPassword,
       })
       if (response.status === 'ok') {
-        setSuccess('登录鉴权已关闭')
+        setSuccess('面板登录鉴权已关闭')
         setAuthCurrentPassword('')
         await refreshAuthStatus()
       } else {
@@ -1455,15 +1455,15 @@ export default function ConfigurationPage() {
           </AccordionDetails>
         </Accordion>
 
-        {/* 账户安全 */}
+        {/* 面板登录鉴权 */}
         <Accordion
           expanded={expanded === 'auth'}
           onChange={handleAccordionChange('auth')}
         >
           <AccordionSummary expandIcon={<ExpandMore />}>
             <Box display="flex" alignItems="center" gap={1} width="100%">
-              <Security color={authEnabled ? 'success' : 'primary'} />
-              <Typography fontWeight={600}>账户安全</Typography>
+              <Security color="primary" />
+              <Typography fontWeight={600}>面板登录鉴权</Typography>
               <Box flexGrow={1} />
               <Chip
                 label={authEnabled ? '已启用' : '未启用'}
@@ -1475,7 +1475,7 @@ export default function ConfigurationPage() {
           </AccordionSummary>
           <AccordionDetails>
             <Typography variant="body2" color="text.secondary" paragraph>
-              启用登录鉴权后，访问 Web 管理界面需要输入用户名和密码。
+              启用面板登录鉴权后，访问 Web 管理界面需要输入用户名和密码。
             </Typography>
 
             <Divider sx={{ my: 2 }} />
@@ -1511,7 +1511,7 @@ export default function ConfigurationPage() {
                   disabled={authLoading || authRedirectCountdown !== null}
                   startIcon={authLoading ? <CircularProgress size={20} /> : undefined}
                 >
-                  {authLoading ? '启用中...' : '启用登录鉴权'}
+                  {authLoading ? '启用中...' : '启用面板登录鉴权'}
                 </Button>
               </Box>
             ) : (
@@ -1520,7 +1520,7 @@ export default function ConfigurationPage() {
                   当前用户名：<strong>{authUsername}</strong>
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  如需修改用户名，请先关闭登录鉴权重新设置
+                  如需修改用户名，请先关闭面板登录鉴权重新设置
                 </Typography>
 
                 <Divider />
@@ -1562,7 +1562,7 @@ export default function ConfigurationPage() {
                 <Divider sx={{ my: 1 }} />
 
                 <Alert severity="warning">
-                  关闭登录鉴权需要输入当前密码确认，关闭后任何设备都可无需登录直接访问管理界面。
+                  关闭面板登录鉴权需要输入当前密码确认，关闭后任何设备都可无需登录直接访问管理界面。
                 </Alert>
                 <Button
                   variant="outlined"
@@ -1571,7 +1571,7 @@ export default function ConfigurationPage() {
                   disabled={authLoading}
                   startIcon={authLoading ? <CircularProgress size={20} /> : undefined}
                 >
-                  {authLoading ? '关闭中...' : '关闭登录鉴权'}
+                  {authLoading ? '关闭中...' : '关闭面板登录鉴权'}
                 </Button>
               </Box>
             )}

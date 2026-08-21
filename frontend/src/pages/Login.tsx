@@ -10,7 +10,6 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material'
-import { Lock as LockIcon } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Login() {
@@ -49,8 +48,7 @@ export default function Login() {
       <Card sx={{ maxWidth: 380, width: '100%' }}>
         <CardContent sx={{ p: 4 }}>
           <Box display="flex" flexDirection="column" alignItems="center" mb={3}>
-            <LockIcon color="primary" sx={{ fontSize: 40, mb: 1 }} />
-            <Typography variant="h5" fontWeight={600}>
+            <Typography variant="h4" fontWeight={600}>
               UDX710 控制面板
             </Typography>
           </Box>
