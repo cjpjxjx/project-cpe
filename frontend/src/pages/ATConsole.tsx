@@ -367,7 +367,6 @@ export default function ATConsolePage() {
                   minWidth: 180,
                   '& input': { fontFamily: 'monospace', fontSize: '0.85rem' },
                 }}
-                helperText={`${currentImei.length}/15`}
               />
               <Button
                 variant="contained"
@@ -387,6 +386,9 @@ export default function ATConsolePage() {
                 {imeiLoading ? '...' : '读取'}
               </Button>
             </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              {currentImei.length}/15
+            </Typography>
           </Box>
         </Collapse>
 

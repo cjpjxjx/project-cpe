@@ -351,7 +351,7 @@ export default function InitScriptPage() {
   }
 
   return (
-    <Box sx={{ width: '100%', maxWidth: 1120, mx: 'auto' }}>
+    <Box>
       <Box mb={{ xs: 2.5, sm: 3 }}>
         <Typography
           variant="h4"
