@@ -1,8 +1,11 @@
 //! Web 终端（ttyd）反向代理
 //!
-//! ttyd 以 `-b /api/terminal/proxy -H X-Remote-User` 启动，自身不再校验 Basic Auth，
+//! ttyd 以 `-i lo -b /api/terminal/proxy -H X-Remote-User` 启动，自身不再校验 Basic Auth，
 //! 改由本模块在请求通过管理后台鉴权中间件后注入该请求头放行。请求路径原样透传，
 //! 由 ttyd 依据 `-b` 自行处理。
+//!
+//! `-i lo` 不可省略：`-H` 只要求请求带上指定的头，头值由客户端自由设置，ttyd 一旦
+//! 监听在非回环地址，局域网内任何人带上该头就能取得 root 终端。
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -15,10 +18,14 @@ use axum::response::{IntoResponse, Response};
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message as TungMessage;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// ttyd 监听地址
 const TTYD_ADDR: &str = "127.0.0.1:7681";
+/// ttyd 监听端口，需与 `TTYD_ADDR` 一致
+pub const TTYD_PORT: u16 = 7681;
+/// ttyd 的 `-i` 监听接口，需与 start.sh 中的参数一致
+pub const TTYD_BIND_INTERFACE: &str = "lo";
 /// ttyd 的 `-b` 挂载路径，需与 start.sh 中的参数一致
 pub const TTYD_BASE_PATH: &str = "/api/terminal/proxy";
 /// ttyd 的 `-H` 信任头名称，需与 start.sh 中的参数一致
@@ -212,9 +219,30 @@ fn to_axum(msg: TungMessage) -> Option<AxumMessage> {
 
 // ============ ttyd 进程管理 ============
 
-/// 探测 ttyd 是否已按代理模式运行：带认证头请求基础路径应返回 200
+/// 探测 ttyd 是否已按代理模式运行
+///
+/// 双向确认：不带认证头必须被拒（ttyd 1.7.7 返回 407），带头才返回 200。只探带头的
+/// 那一次无法区分「代理模式」与「完全没有鉴权」，后者同样返回 200。
 async fn probe_ttyd_proxy_mode() -> bool {
     let url = format!("http://{}{}/", TTYD_ADDR, TTYD_BASE_PATH);
+
+    let anonymous = http_client()
+        .get(&url)
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await;
+
+    match anonymous {
+        // 无凭据即放行，说明 ttyd 没有开启 -H 校验，必须当作未就绪处理
+        Ok(resp) if resp.status() == StatusCode::OK => {
+            warn!("ttyd accepts requests without the auth header");
+            return false;
+        }
+        Ok(_) => {}
+        // 端口还没起来
+        Err(_) => return false,
+    }
+
     http_client()
         .get(&url)
         .header(TTYD_AUTH_HEADER, TTYD_AUTH_USER)
@@ -222,6 +250,44 @@ async fn probe_ttyd_proxy_mode() -> bool {
         .send()
         .await
         .is_ok_and(|resp| resp.status() == StatusCode::OK)
+}
+
+/// 检查 ttyd 是否监听在回环以外的地址
+///
+/// `-H` 只校验请求头是否存在，头值由客户端自由设置。ttyd 一旦绑在非回环地址，
+/// 局域网内任何人带上该头即可取得 root 终端，完全绕过管理后台鉴权。
+fn is_ttyd_publicly_bound() -> bool {
+    // /proc/net/tcp 每行字段依次为 sl、local_address、rem_address、st…，
+    // local_address 是「小端十六进制 IP:大端十六进制端口」，st 为 0A 表示 LISTEN
+    fn has_public_listener(content: &str, loopback: &str) -> bool {
+        content
+            .lines()
+            .skip(1)
+            .filter_map(|line| {
+                let mut fields = line.split_whitespace().skip(1);
+                let local = fields.next()?;
+                let state = fields.nth(1)?;
+                Some((local, state))
+            })
+            .any(|(local, state)| {
+                let Some((addr, port)) = local.split_once(':') else {
+                    return false;
+                };
+                state == "0A"
+                    && u16::from_str_radix(port, 16) == Ok(TTYD_PORT)
+                    && !addr.eq_ignore_ascii_case(loopback)
+            })
+    }
+
+    // IPv4 回环为 127.0.0.1，IPv6 回环为 ::1；IPv6 的 `::`（全零）属于对外监听
+    let sources = [
+        ("/proc/net/tcp", "0100007F"),
+        ("/proc/net/tcp6", "00000000000000000000000001000000"),
+    ];
+
+    sources.into_iter().any(|(path, loopback)| {
+        std::fs::read_to_string(path).is_ok_and(|content| has_public_listener(&content, loopback))
+    })
 }
 
 /// 重启 ttyd 并确认它以代理模式起来
@@ -279,32 +345,70 @@ pub async fn restart_ttyd_verified() -> Result<(), String> {
     ))
 }
 
-/// 启动时校准 ttyd：修正 start.sh 参数，运行中的实例不是代理模式则重启一次
+/// 启动时校准 ttyd：修正 start.sh 参数，实例不满足「代理模式 + 绑定回环」则重启
 ///
 /// loader.sh 几乎同时拉起 ttyd 和本进程，首次探测可能早于 ttyd 监听端口，
 /// 因此先在 5 秒窗口内反复探测，确认确实不是代理模式才重启，避免无谓重启。
+///
+/// 无论探测结果如何都会先落一条 iptables 兜底规则：start.sh 格式无法识别时参数
+/// 注入会跳过，此时 `-i lo` 不会生效，只剩这条规则挡住局域网直连。
 pub async fn ensure_ttyd_proxy_runtime() {
     use tokio::time::sleep;
 
     const SETTLE_INTERVAL_MS: u64 = 500;
     const SETTLE_WINDOW_MS: u64 = 5_000;
 
-    if let Err(e) = crate::config::ensure_ttyd_proxy_mode() {
-        warn!(error = %e, "Failed to patch ttyd start script");
-    }
+    crate::iptables::ensure_ttyd_port_protected().await;
 
+    let script_managed = match crate::config::ensure_ttyd_proxy_mode() {
+        Ok(managed) => managed,
+        Err(e) => {
+            warn!(error = %e, "Failed to patch ttyd start script");
+            false
+        }
+    };
+
+    let mut proxy_mode = false;
     let mut waited_ms = 0u64;
     while waited_ms < SETTLE_WINDOW_MS {
         if probe_ttyd_proxy_mode().await {
-            debug!(waited_ms, "ttyd already running in proxy mode");
-            return;
+            proxy_mode = true;
+            break;
         }
         sleep(Duration::from_millis(SETTLE_INTERVAL_MS)).await;
         waited_ms += SETTLE_INTERVAL_MS;
     }
 
-    info!("ttyd is not running in proxy mode, restarting it");
+    // 运行中的实例可能仍绑在 0.0.0.0：`-i lo` 本次才写进 start.sh，对已启动的进程
+    // 不生效。此时即使代理模式探测通过也必须重启，否则要等到下次开机才收口
+    let publicly_bound = is_ttyd_publicly_bound();
+    if publicly_bound {
+        error!(
+            port = TTYD_PORT,
+            "ttyd is listening on a non-loopback address; anyone on the LAN can reach a root shell"
+        );
+    }
+
+    if proxy_mode && !publicly_bound {
+        debug!(waited_ms, "ttyd already running in proxy mode on loopback");
+        return;
+    }
+
+    if publicly_bound && !script_managed {
+        warn!("ttyd start script is not managed, restarting would not rebind it to loopback");
+        return;
+    }
+
+    info!(proxy_mode, publicly_bound, "Restarting ttyd");
     if let Err(e) = restart_ttyd_verified().await {
         warn!(error = %e, "Failed to bring ttyd into proxy mode");
+        return;
+    }
+
+    if is_ttyd_publicly_bound() {
+        error!(
+            port = TTYD_PORT,
+            "ttyd is still bound to a non-loopback address after restart"
+        );
     }
 }

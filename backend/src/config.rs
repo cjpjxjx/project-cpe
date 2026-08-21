@@ -347,7 +347,9 @@ impl ConfigManager {
         
         fs::write(&self.config_path, content)
             .map_err(|e| format!("Failed to write config file: {}", e))?;
-        
+
+        set_private_permissions(&self.config_path)?;
+
         Ok(())
     }
     
@@ -513,6 +515,26 @@ fn set_executable_permissions(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// 将文件权限设为仅属主可读写（0600）
+///
+/// config.json 存有密码哈希、Webhook 密钥与推送渠道凭据，data.db 存有短信与通话
+/// 记录，都不应对其他本地用户可读。
+pub fn set_private_permissions(path: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = fs::metadata(path)
+            .map_err(|e| format!("Failed to read metadata for {}: {}", path.display(), e))?
+            .permissions();
+        permissions.set_mode(0o600);
+        fs::set_permissions(path, permissions)
+            .map_err(|e| format!("Failed to set permissions for {}: {}", path.display(), e))?;
+    }
+
+    Ok(())
+}
+
 pub fn ensure_loader_hooks_init() -> Result<(), String> {
     let loader_path = PathBuf::from(LOADER_SCRIPT_PATH);
     let current_content = if loader_path.exists() {
@@ -611,7 +633,8 @@ fn is_ttyd_command_line(line: &str) -> bool {
 
 /// 从 token 列表中移除由本项目托管的 ttyd 参数（幂等处理）
 ///
-/// 含历史版本写入的 Basic Auth 参数，切换到代理模式后不再需要。
+/// 含历史版本写入的 Basic Auth 参数，切换到代理模式后不再需要；也含监听接口参数，
+/// 由 `patch_ttyd_proxy_line` 统一重写为回环接口。
 fn strip_ttyd_managed_flags(tokens: &[String]) -> Vec<String> {
     const FLAGS_WITH_VALUE: &[&str] = &[
         "-c",
@@ -620,6 +643,8 @@ fn strip_ttyd_managed_flags(tokens: &[String]) -> Vec<String> {
         "--base-path",
         "-H",
         "--auth-header",
+        "-i",
+        "--interface",
     ];
 
     let mut result: Vec<String> = Vec::with_capacity(tokens.len());
@@ -641,6 +666,9 @@ fn strip_ttyd_managed_flags(tokens: &[String]) -> Vec<String> {
 }
 
 /// 在 ttyd 启动脚本内容中写入反向代理参数
+///
+/// 写入 `-i lo` 把 ttyd 限制在回环接口：`-H` 只要求请求带上指定的头，头值由客户端
+/// 自由设置，ttyd 一旦监听在非回环地址，局域网内任何人带上该头就能取得 root 终端。
 ///
 /// 参数插入在可执行文件名紧后、其余参数之前，而不是行尾——ttyd 的调用行
 /// 末尾常跟着要执行的 shell 命令（如 ./ttyd -p 7681 sh &），追加到行尾会被
@@ -681,6 +709,8 @@ fn patch_ttyd_proxy_line(content: &str) -> Option<String> {
 
             let mut rebuilt = vec![
                 tokens[0].clone(),
+                "-i".to_string(),
+                crate::terminal_proxy::TTYD_BIND_INTERFACE.to_string(),
                 "-b".to_string(),
                 crate::terminal_proxy::TTYD_BASE_PATH.to_string(),
                 "-H".to_string(),
@@ -708,11 +738,14 @@ fn patch_ttyd_proxy_line(content: &str) -> Option<String> {
 ///
 /// 该脚本不随本仓库发布，格式未知；找不到匹配的 ttyd 命令行时仅记录警告并跳过，
 /// 不修改文件内容。内容无变化时不落盘。
-pub fn ensure_ttyd_proxy_mode() -> Result<(), String> {
+///
+/// 返回脚本是否确认带上了受管参数：为 false 时（文件缺失或无法识别）重启 ttyd
+/// 也不会让 `-i lo` 生效，调用方据此决定是否值得重启。
+pub fn ensure_ttyd_proxy_mode() -> Result<bool, String> {
     let script_path = PathBuf::from(TTYD_START_SCRIPT_PATH);
     if !script_path.exists() {
         warn!(path = TTYD_START_SCRIPT_PATH, "ttyd start script not found, skip proxy patch");
-        return Ok(());
+        return Ok(false);
     }
 
     let current_content = fs::read_to_string(&script_path)
@@ -721,19 +754,19 @@ pub fn ensure_ttyd_proxy_mode() -> Result<(), String> {
     match patch_ttyd_proxy_line(&current_content) {
         Some(updated_content) => {
             if updated_content == normalize_newlines(&current_content) {
-                return Ok(());
+                return Ok(true);
             }
             fs::write(&script_path, updated_content)
                 .map_err(|e| format!("Failed to write ttyd start script: {}", e))?;
             set_executable_permissions(&script_path)?;
-            Ok(())
+            Ok(true)
         }
         None => {
             warn!(
                 path = TTYD_START_SCRIPT_PATH,
                 "Could not find ttyd command line in start script, skip proxy patch"
             );
-            Ok(())
+            Ok(false)
         }
     }
 }
@@ -795,15 +828,27 @@ mod tests {
         let script = "#!/bin/sh\n/home/root/ttyd/ttyd -p 7681 -i eth0 bash &\n";
         let updated = patch_ttyd_proxy_line(script).unwrap();
 
-        assert!(updated.contains("-b /api/terminal/proxy -H X-Remote-User"));
+        assert!(updated.contains("-i lo -b /api/terminal/proxy -H X-Remote-User"));
         assert!(updated.trim_end().ends_with('&'));
     }
 
     #[test]
-    fn patch_ttyd_proxy_line_is_idempotent() {
-        let script = "#!/bin/sh\n./ttyd -b /api/terminal/proxy -H X-Remote-User -p 7681 sh &\n";
+    fn patch_ttyd_proxy_line_rebinds_public_interface_to_loopback() {
+        // 原厂脚本把 ttyd 绑在对外接口上时必须改回 lo，否则 -H 形同虚设
+        let script = "#!/bin/sh\n./ttyd --interface eth0 -W -p 7681 sh &\n";
         let updated = patch_ttyd_proxy_line(script).unwrap();
 
+        assert!(!updated.contains("eth0"));
+        assert_eq!(updated.matches("-i lo").count(), 1);
+    }
+
+    #[test]
+    fn patch_ttyd_proxy_line_is_idempotent() {
+        let script =
+            "#!/bin/sh\n./ttyd -i lo -b /api/terminal/proxy -H X-Remote-User -p 7681 sh &\n";
+        let updated = patch_ttyd_proxy_line(script).unwrap();
+
+        assert_eq!(updated.matches("-i ").count(), 1);
         assert_eq!(updated.matches("-b ").count(), 1);
         assert_eq!(updated.matches("-H ").count(), 1);
     }
@@ -830,7 +875,8 @@ mod tests {
         let script = "#!/bin/sh\ncd /home/root/ttyd/\nchmod 755 *\n./ttyd -W -p 7681 sh &\n";
         let updated = patch_ttyd_proxy_line(script).unwrap();
 
-        assert!(updated.contains("./ttyd -b /api/terminal/proxy -H X-Remote-User -W -p 7681 sh &"));
+        assert!(updated
+            .contains("./ttyd -i lo -b /api/terminal/proxy -H X-Remote-User -W -p 7681 sh &"));
         assert!(!updated.contains("sh -b"));
     }
 }

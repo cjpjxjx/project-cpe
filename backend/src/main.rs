@@ -30,7 +30,7 @@ use axum::{
 };
 use clap::Parser;
 use std::sync::Arc;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use tower_http::cors::{CorsLayer, Any};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -88,11 +88,23 @@ async fn spa_fallback(uri: Uri) -> Response {
     
     // 获取 www 目录的绝对路径
     let www_dir = get_www_dir();
-    
+
     // 构建请求文件的完整路径
     let requested_path = if path == "/" { "/index.html" } else { path };
-    let file_path = www_dir.join(requested_path.trim_start_matches('/'));
-    
+    let relative_path = Path::new(requested_path.trim_start_matches('/'));
+
+    // 请求路径只允许普通路径段。axum 未做路径规范化，`..` 会原样传到这里，
+    // 直接 join 可以穿出 www 目录读到 config.json（含密码哈希）、data.db 等文件；
+    // 且本回退处理器注册在鉴权中间件之后，不受其保护
+    if relative_path
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return (StatusCode::NOT_FOUND, "Not found").into_response();
+    }
+
+    let file_path = www_dir.join(relative_path);
+
     // 如果文件存在，返回文件内容
     if let Ok(content) = tokio::fs::read(&file_path).await {
         // 根据文件扩展名设置正确的 Content-Type
@@ -187,7 +199,10 @@ async fn main() -> Result<()> {
             }
         }
     }
-    let app_db = Arc::new(Database::new(db_path)?);
+    let app_db = Arc::new(Database::new(db_path.clone())?);
+    if let Err(err) = config::set_private_permissions(&db_path) {
+        warn!(error = %err, "Failed to restrict data.db permissions");
+    }
     
     // 初始化配置管理器
     let config_path = get_default_config_path();

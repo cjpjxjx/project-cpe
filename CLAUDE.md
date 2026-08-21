@@ -101,8 +101,9 @@ README.md、CLAUDE.md、其他 .md 文档及代码注释遵守：
 ### 进程与启动
 - 设备开机由 `/home/root/loader.sh` 拉起（内容由 `config.rs` 管理），依次启动：
   1. `/home/root/ttyd/start.sh`（ttyd Web 终端，**独立于本项目的第三方二进制**，监听 7681）
-     - 后端启动时会把该脚本的 ttyd 命令行校准为 `-b /api/terminal/proxy -H X-Remote-User`，
-       ttyd 自身不再做 Basic Auth，改由后端代理注入信任头；运行中的实例不是该模式则自动重启一次
+     - 后端启动时会把该脚本的 ttyd 命令行校准为 `-i lo -b /api/terminal/proxy -H X-Remote-User`，
+       ttyd 自身不再做 Basic Auth，改由后端代理注入信任头；运行中的实例不满足「代理模式 +
+       绑定回环」则自动重启一次，另有 iptables 规则丢弃非回环接口发往 7681 的流量
   2. `/home/root/udx710 -p 80`（**本项目后端**，默认监听 80）
   3. `sh /home/root/init.sh`（用户自定义开机脚本，可在 Web「初始化脚本」页面编辑）
 - 后端 `main()` 启动时：连接 system D-Bus → 打开/迁移 SQLite → 加载 config.json → `ensure_loader_hooks_init()` 维护 loader.sh → 启动多个 `tokio::spawn` 后台任务：
