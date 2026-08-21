@@ -82,6 +82,23 @@ import type {
 // API 基础配置
 const API_BASE = '/api'
 
+// 主动使会话失效（如启用鉴权、修改密码）后，短时间内后台轮询请求也会收到 401，
+// 若立即据此跳转会打断调用方自己安排的提示/倒计时。调用方可在操作成功后调用
+// suppressUnauthorizedRedirect 压制这段时间内的自动跳转，由自己控制何时跳转；
+// 压制窗口结束后仍未跳转（如倒计时被打断），全局兜底逻辑照常恢复生效。
+let unauthorizedRedirectSuppressedUntil = 0
+
+export function suppressUnauthorizedRedirect(ms: number) {
+  unauthorizedRedirectSuppressedUntil = Date.now() + ms
+}
+
+function notifyUnauthorized() {
+  if (Date.now() < unauthorizedRedirectSuppressedUntil) {
+    return
+  }
+  window.dispatchEvent(new Event('udx710:unauthorized'))
+}
+
 // 通用请求函数
 async function request<T>(
   url: string,
@@ -98,7 +115,7 @@ async function request<T>(
   })
 
   if (response.status === 401) {
-    window.dispatchEvent(new Event('udx710:unauthorized'))
+    notifyUnauthorized()
   }
 
   if (!response.ok) {
@@ -620,7 +637,7 @@ class UDX710API {
       },
     })
     if (response.status === 401) {
-      window.dispatchEvent(new Event('udx710:unauthorized'))
+      notifyUnauthorized()
     }
     return response.json() as Promise<ApiResponse<OtaUploadResponse>>
   }

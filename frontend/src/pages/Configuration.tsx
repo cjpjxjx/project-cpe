@@ -51,7 +51,7 @@ import {
   PlayArrow,
   Security,
 } from '@mui/icons-material'
-import { api } from '../api'
+import { api, suppressUnauthorizedRedirect } from '../api'
 import ErrorSnackbar from '../components/ErrorSnackbar'
 import { useRefreshInterval } from '../contexts/RefreshContext'
 import { useAuth } from '../contexts/AuthContext'
@@ -446,6 +446,9 @@ export default function ConfigurationPage() {
         setAuthNewPassword('')
         setAuthConfirmPassword('')
         setSuccess('登录鉴权已启用')
+        // 会话已在服务端失效，倒计时期间其他后台轮询请求会先一步收到 401；
+        // 压制全局兜底跳转，让下面的倒计时说了算，压制窗口结束后兜底逻辑自动恢复
+        suppressUnauthorizedRedirect(3500)
         setAuthRedirectCountdown(3)
       } else {
         setError(response.message)
@@ -484,6 +487,7 @@ export default function ConfigurationPage() {
         setAuthNewPassword('')
         setAuthConfirmPassword('')
         setSuccess('密码已修改，请重新登录')
+        suppressUnauthorizedRedirect(3500)
         setAuthRedirectCountdown(3)
       } else {
         setError(response.message)
@@ -1471,7 +1475,7 @@ export default function ConfigurationPage() {
           </AccordionSummary>
           <AccordionDetails>
             <Typography variant="body2" color="text.secondary" paragraph>
-              启用登录鉴权后，访问 Web 管理界面需要输入用户名和密码；同一密码也会用于 Web 终端（ttyd）的访问认证。
+              启用登录鉴权后，访问 Web 管理界面需要输入用户名和密码。
             </Typography>
 
             <Divider sx={{ my: 2 }} />

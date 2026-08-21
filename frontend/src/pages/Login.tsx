@@ -51,7 +51,7 @@ export default function Login() {
           <Box display="flex" flexDirection="column" alignItems="center" mb={3}>
             <LockIcon color="primary" sx={{ fontSize: 40, mb: 1 }} />
             <Typography variant="h5" fontWeight={600}>
-              UDX710 管理登录
+              UDX710 控制面板
             </Typography>
           </Box>
 

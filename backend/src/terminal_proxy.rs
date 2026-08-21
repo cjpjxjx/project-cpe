@@ -235,18 +235,30 @@ pub async fn restart_ttyd_verified() -> Result<(), String> {
     const MAX_RESTARTS: usize = 3;
 
     for attempt in 1..=MAX_RESTARTS {
-        let _ = std::process::Command::new("sh")
-            .arg("-c")
-            .arg("pkill ttyd; true")
-            .status();
+        // Command::status() 是同步阻塞调用，必须丢进 spawn_blocking，否则会
+        // 独占当前 tokio 工作线程，在这台核心数很少的设备上足以拖住其他并发
+        // 请求（包括登录接口）
+        let _ = tokio::task::spawn_blocking(|| {
+            std::process::Command::new("sh")
+                .arg("-c")
+                .arg("pkill ttyd; true")
+                .status()
+        })
+        .await;
 
         sleep(Duration::from_millis(200)).await;
 
-        if let Err(e) = std::process::Command::new("sh")
-            .arg(crate::config::TTYD_START_SCRIPT_PATH)
-            .status()
-        {
-            warn!(attempt, error = %e, "Failed to run ttyd start script");
+        let start_result = tokio::task::spawn_blocking(|| {
+            std::process::Command::new("sh")
+                .arg(crate::config::TTYD_START_SCRIPT_PATH)
+                .status()
+        })
+        .await;
+
+        match start_result {
+            Ok(Err(e)) => warn!(attempt, error = %e, "Failed to run ttyd start script"),
+            Err(e) => warn!(attempt, error = %e, "ttyd start script task panicked"),
+            Ok(Ok(_)) => {}
         }
 
         let mut elapsed_ms = 0u64;
