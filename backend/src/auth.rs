@@ -8,7 +8,7 @@ use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 use argon2::password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use argon2::Argon2;
+use argon2::{Algorithm, Argon2, Params, Version};
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::middleware::Next;
@@ -25,21 +25,51 @@ const SESSION_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 /// 无需鉴权即可访问的路径前缀
 const PUBLIC_PATHS: &[&str] = &["/api/auth/login", "/api/auth/status", "/api/health"];
 
-pub fn hash_password(password: &str) -> Result<String, String> {
-    let salt = SaltString::generate(&mut OsRng);
-    Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
-        .map(|hash| hash.to_string())
-        .map_err(|e| format!("Failed to hash password: {}", e))
+/// 新密码哈希使用的参数：内存 8 MiB、1 轮迭代。
+///
+/// Argon2 的默认参数（19 MiB / 2 轮）是 RFC 9106 面向互联网服务的推荐值，针对
+/// 的是「哈希库被拖库后攻击者用 GPU 集群离线爆破」这种场景。这里保护的是单台
+/// 本地设备的管理密码，攻击者必须先接触到设备所在网络才能碰到登录接口，因此
+/// 调轻参数：UDX710 需要与 ofonod/sprdrild 等原厂进程抢 CPU，默认参数下单次
+/// 哈希/校验可能耗时数十秒。加盐哈希在更低参数下仍远强于无盐/快速哈希。
+///
+/// 仅影响新生成的哈希：`verify_password` 校验时使用的是哈希串里内嵌的历史
+/// 参数（见 `password-hash` crate 的 `PasswordVerifier` blanket 实现），不受
+/// 这里改动影响，旧密码要重新设置一次才会换成轻量参数。
+fn new_password_params() -> Params {
+    Params::new(8 * 1024, 1, Params::DEFAULT_P_COST, None)
+        .expect("hardcoded Argon2 params must be valid")
 }
 
-pub fn verify_password(password: &str, hash: &str) -> bool {
-    let Ok(parsed_hash) = PasswordHash::new(hash) else {
-        return false;
-    };
-    Argon2::default()
-        .verify_password(password.as_bytes(), &parsed_hash)
-        .is_ok()
+/// Argon2 哈希/校验是 CPU+内存密集型阻塞操作；放到 `spawn_blocking` 里跑，
+/// 避免独占 tokio 工作线程导致其他并发请求被卡住。
+pub async fn hash_password(password: &str) -> Result<String, String> {
+    let password = password.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::new(Algorithm::default(), Version::default(), new_password_params());
+        argon2
+            .hash_password(password.as_bytes(), &salt)
+            .map(|hash| hash.to_string())
+            .map_err(|e| format!("Failed to hash password: {}", e))
+    })
+    .await
+    .map_err(|e| format!("Password hashing task panicked: {}", e))?
+}
+
+pub async fn verify_password(password: &str, hash: &str) -> bool {
+    let password = password.to_owned();
+    let hash = hash.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let Ok(parsed_hash) = PasswordHash::new(&hash) else {
+            return false;
+        };
+        Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .is_ok()
+    })
+    .await
+    .unwrap_or(false)
 }
 
 pub fn generate_session_token() -> String {

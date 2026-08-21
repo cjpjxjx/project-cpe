@@ -44,7 +44,6 @@ use crate::{
 };
 use crate::state::FrontendRuntime;
 use std::process::Command;
-use tracing::{info, warn};
 
 /// 处理 OPTIONS 请求（CORS 预检）
 pub async fn options_handler() -> impl IntoResponse {
@@ -2660,58 +2659,6 @@ pub async fn clear_call_history_handler(
 
 // ============ 登录鉴权 API ============
 
-/// 检查 ttyd 是否在 7681 端口监听
-async fn check_ttyd_port() -> bool {
-    tokio::net::TcpStream::connect("127.0.0.1:7681").await.is_ok()
-}
-
-/// 重启 ttyd 并验证它确实启动成功
-///
-/// 每次重启后在 1s / 3s / 10s 三个时间点检查端口；如果 10s 内没起来就再重启，
-/// 最多重启 3 次（共 9 次检查）。成功返回 Ok，全部失败返回 Err。
-async fn restart_ttyd_verified() -> Result<(), String> {
-    use tokio::time::{sleep, Duration};
-
-    // 每次重启后的检查时间点（累计）：1s、再等 2s = 3s、再等 7s = 10s
-    const CHECK_DELAYS_MS: &[u64] = &[1_000, 2_000, 7_000];
-    const MAX_RESTARTS: usize = 3;
-
-    for attempt in 1..=MAX_RESTARTS {
-        // 杀掉现有 ttyd 进程（pkill 找不到进程时退出码非零，用 `; true` 忽略）
-        let _ = std::process::Command::new("sh")
-            .arg("-c")
-            .arg("pkill ttyd; true")
-            .status();
-
-        sleep(Duration::from_millis(200)).await;
-
-        // 通过 start.sh 重新启动（脚本内部 cd + chmod + ./ttyd ... &，本身很快退出）
-        if let Err(e) = std::process::Command::new("sh")
-            .arg(crate::config::TTYD_START_SCRIPT_PATH)
-            .status()
-        {
-            warn!(attempt, error = %e, "Failed to run ttyd start script");
-        }
-
-        // 在 1s / 3s / 10s 三个时间点依次检查
-        let mut elapsed_ms = 0u64;
-        for &delay_ms in CHECK_DELAYS_MS {
-            sleep(Duration::from_millis(delay_ms)).await;
-            elapsed_ms += delay_ms;
-            if check_ttyd_port().await {
-                info!(attempt, elapsed_ms, "ttyd restarted and verified on port 7681");
-                return Ok(());
-            }
-        }
-
-        warn!(attempt, "ttyd did not come up within 10s, will retry");
-    }
-
-    Err(format!(
-        "ttyd 重启失败：{MAX_RESTARTS} 次尝试均未能在 10 秒内启动，请检查 start.sh 及 ttyd 版本"
-    ))
-}
-
 /// POST /api/auth/login - 用户登录
 pub async fn post_login(
     State(state): State<crate::state::AppState>,
@@ -2721,7 +2668,7 @@ pub async fn post_login(
 
     let valid = auth.enabled
         && req.username == auth.username
-        && crate::auth::verify_password(&req.password, &auth.password_hash);
+        && crate::auth::verify_password(&req.password, &auth.password_hash).await;
 
     if !valid {
         return (
@@ -2807,10 +2754,10 @@ pub async fn post_auth_config(
 
     // 已启用鉴权时，任何修改都必须先验证当前密码
     if current.enabled {
-        let current_password_valid = req
-            .current_password
-            .as_deref()
-            .is_some_and(|pwd| crate::auth::verify_password(pwd, &current.password_hash));
+        let current_password_valid = match req.current_password.as_deref() {
+            Some(pwd) => crate::auth::verify_password(pwd, &current.password_hash).await,
+            None => false,
+        };
 
         if !current_password_valid {
             return (
@@ -2822,7 +2769,7 @@ pub async fn post_auth_config(
 
     let password_hash = match &req.new_password {
         Some(new_password) if !new_password.is_empty() => {
-            match crate::auth::hash_password(new_password) {
+            match crate::auth::hash_password(new_password).await {
                 Ok(hash) => hash,
                 Err(e) => {
                     return (
@@ -2842,11 +2789,11 @@ pub async fn post_auth_config(
         );
     }
 
+    // ttyd 经 /api/terminal/proxy 反向代理访问，访问控制由鉴权中间件统一处理，
+    // 启用/关闭鉴权都无需改动 ttyd 自身或重启它。
+
     // ── 路径 1：关闭鉴权 ──────────────────────────────────────────────────
     if !req.enabled {
-        if let Err(e) = crate::config::clear_ttyd_auth() {
-            warn!(error = %e, "Failed to clear ttyd auth from start script");
-        }
         state.session_store.remove_all();
         let new_auth = crate::config::AuthConfig {
             enabled: false,
@@ -2868,27 +2815,7 @@ pub async fn post_auth_config(
     // ── 路径 2：启用鉴权或修改密码（提供了新密码） ─────────────────────────
     if let Some(new_password) = &req.new_password {
         if !new_password.is_empty() {
-            // 1. 更新 start.sh，使下次重启后 ttyd 也受同一密码保护
-            if let Err(e) = crate::config::ensure_ttyd_auth(&req.username, new_password) {
-                warn!(error = %e, "Failed to patch ttyd start script");
-            }
-
-            // 2. 重启 ttyd 并验证（最多 3 次，每次 1s/3s/10s 三个检查点）
-            if let Err(ttyd_err) = restart_ttyd_verified().await {
-                // 回滚 start.sh，避免设备重启后 ttyd 用错误参数起不来
-                if let Err(e) = crate::config::clear_ttyd_auth() {
-                    warn!(error = %e, "Failed to rollback ttyd start script after restart failure");
-                }
-                return (
-                    StatusCode::OK,
-                    Json(ApiResponse::error(format!(
-                        "ttyd 重启失败，鉴权未启用：{}",
-                        ttyd_err
-                    ))),
-                );
-            }
-
-            // 3. ttyd 已确认运行，踢掉所有旧会话，保存新配置
+            // 踢掉所有旧会话，保存新配置
             state.session_store.remove_all();
             let new_auth = crate::config::AuthConfig {
                 enabled: true,

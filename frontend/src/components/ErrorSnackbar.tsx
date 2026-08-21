@@ -18,7 +18,6 @@ import {
   DialogContent,
   DialogActions,
   Button,
-  Typography,
   Box,
 } from '@mui/material'
 import { Close as CloseIcon, InfoOutlined } from '@mui/icons-material'
@@ -28,16 +27,24 @@ interface ErrorSnackbarProps {
   onClose: () => void
 }
 
+const TRUNCATE_LEN = 80
+
 export default function ErrorSnackbar({ error, onClose }: ErrorSnackbarProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
+  // 关闭 Snackbar 时 error 会先变成 null，退场动画期间 Alert 仍挂载并重新渲染；
+  // 锁存最近一条非空内容，避免退场瞬间闪现成兜底的“未知错误”
+  const [displayError, setDisplayError] = useState<string | null>(null)
+  const [prevError, setPrevError] = useState<string | null>(null)
 
-  const handleDialogOpen = () => {
-    setDialogOpen(true)
+  if (error !== prevError) {
+    setPrevError(error)
+    if (error !== null) {
+      setDisplayError(error)
+    }
   }
 
-  const handleDialogClose = () => {
-    setDialogOpen(false)
-  }
+  const isLong = !!displayError && displayError.length > TRUNCATE_LEN
+  const displayText = isLong ? displayError.slice(0, TRUNCATE_LEN) + '...' : (displayError ?? '未知错误')
 
   const handleSnackbarClose = () => {
     onClose()
@@ -58,14 +65,16 @@ export default function ErrorSnackbar({ error, onClose }: ErrorSnackbarProps) {
           onClose={handleSnackbarClose}
           action={
             <>
-              <IconButton
-                size="small"
-                color="inherit"
-                onClick={handleDialogOpen}
-                title="查看详情"
-              >
-                <InfoOutlined fontSize="small" />
-              </IconButton>
+              {isLong && (
+                <IconButton
+                  size="small"
+                  color="inherit"
+                  onClick={() => setDialogOpen(true)}
+                  title="查看完整详情"
+                >
+                  <InfoOutlined fontSize="small" />
+                </IconButton>
+              )}
               <IconButton
                 size="small"
                 color="inherit"
@@ -77,13 +86,13 @@ export default function ErrorSnackbar({ error, onClose }: ErrorSnackbarProps) {
           }
           sx={{ minWidth: 300 }}
         >
-          请求失败
+          {displayText}
         </Alert>
       </Snackbar>
 
       <Dialog
         open={dialogOpen}
-        onClose={handleDialogClose}
+        onClose={() => setDialogOpen(false)}
         maxWidth="sm"
         fullWidth
       >
@@ -94,9 +103,6 @@ export default function ErrorSnackbar({ error, onClose }: ErrorSnackbarProps) {
           </Box>
         </DialogTitle>
         <DialogContent>
-          <Typography variant="body1" gutterBottom fontWeight="medium">
-            错误信息:
-          </Typography>
           <Box
             sx={{
               bgcolor: 'action.hover',
@@ -110,11 +116,11 @@ export default function ErrorSnackbar({ error, onClose }: ErrorSnackbarProps) {
               overflow: 'auto',
             }}
           >
-            {error || '未知错误'}
+            {displayError ?? '未知错误'}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleDialogClose}>关闭</Button>
+          <Button onClick={() => setDialogOpen(false)}>关闭</Button>
         </DialogActions>
       </Dialog>
     </>

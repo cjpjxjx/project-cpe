@@ -16,8 +16,9 @@ export default function Terminal() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // ttyd 运行在同一主机的 7681 端口
-  const displayUrl = `${window.location.protocol}//${window.location.hostname}:7681`
+  // ttyd 经后端反向代理访问，由管理后台的鉴权中间件统一控制
+  const proxyPath = '/api/terminal/proxy/'
+  const displayUrl = `${window.location.origin}${proxyPath}`
 
   const handleOpenInNewTab = () => {
     window.open(displayUrl, '_blank')
@@ -77,7 +78,7 @@ export default function Terminal() {
         }}
       >
         <iframe
-          src={displayUrl}
+          src={proxyPath}
           title="Web Terminal"
           style={{
             width: '100%',

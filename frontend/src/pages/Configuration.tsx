@@ -199,6 +199,23 @@ export default function ConfigurationPage() {
   const [authNewPassword, setAuthNewPassword] = useState('')
   const [authConfirmPassword, setAuthConfirmPassword] = useState('')
   const [authLoading, setAuthLoading] = useState(false)
+  // 启用鉴权/改密码成功后，服务端会立即清空当前会话，倒计时结束才刷新鉴权
+  // 状态触发跳转登录页，给用户一点时间看到成功提示。倒计时被打断（切换页面、
+  // 手动刷新）也没关系：会话已经失效，下一次请求 401 或下次加载状态时
+  // 该项目既有的全局未登录处理会兜底跳转
+  const [authRedirectCountdown, setAuthRedirectCountdown] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (authRedirectCountdown === null) return
+    if (authRedirectCountdown <= 0) {
+      void refreshAuthStatus()
+      return
+    }
+    const timer = window.setTimeout(() => {
+      setAuthRedirectCountdown((count) => (count !== null ? count - 1 : count))
+    }, 1000)
+    return () => window.clearTimeout(timer)
+  }, [authRedirectCountdown, refreshAuthStatus])
 
   const checkHealth = useCallback(async () => {
     setHealthLoading(true)
@@ -426,10 +443,10 @@ export default function ConfigurationPage() {
         new_password: authNewPassword,
       })
       if (response.status === 'ok') {
-        setSuccess('登录鉴权已启用')
         setAuthNewPassword('')
         setAuthConfirmPassword('')
-        await refreshAuthStatus()
+        setSuccess('登录鉴权已启用')
+        setAuthRedirectCountdown(3)
       } else {
         setError(response.message)
       }
@@ -463,11 +480,11 @@ export default function ConfigurationPage() {
         new_password: authNewPassword,
       })
       if (response.status === 'ok') {
-        setSuccess('密码已修改，请重新登录')
         setAuthCurrentPassword('')
         setAuthNewPassword('')
         setAuthConfirmPassword('')
-        await refreshAuthStatus()
+        setSuccess('密码已修改，请重新登录')
+        setAuthRedirectCountdown(3)
       } else {
         setError(response.message)
       }
@@ -480,7 +497,7 @@ export default function ConfigurationPage() {
 
   const handleDisableAuth = async () => {
     if (!authCurrentPassword) {
-      setError('请输入当前密码以确认关闭')
+      setError('请输入当前密码以关闭登录鉴权')
       return
     }
     setAuthLoading(true)
@@ -621,12 +638,14 @@ export default function ConfigurationPage() {
       {success && (
         <Snackbar
           open={true}
-          autoHideDuration={3000}
+          autoHideDuration={authRedirectCountdown !== null ? null : 3000}
           onClose={() => setSuccess(null)}
           anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
         >
           <Alert severity="success" variant="filled" onClose={() => setSuccess(null)}>
-            {success}
+            {authRedirectCountdown !== null
+              ? `${success}，${authRedirectCountdown} 秒后跳转到登录页...`
+              : success}
           </Alert>
         </Snackbar>
       )}
@@ -1485,7 +1504,7 @@ export default function ConfigurationPage() {
                 <Button
                   variant="contained"
                   onClick={() => void handleEnableAuth()}
-                  disabled={authLoading}
+                  disabled={authLoading || authRedirectCountdown !== null}
                   startIcon={authLoading ? <CircularProgress size={20} /> : undefined}
                 >
                   {authLoading ? '启用中...' : '启用登录鉴权'}
@@ -1495,6 +1514,9 @@ export default function ConfigurationPage() {
               <Box display="flex" flexDirection="column" gap={2}>
                 <Typography variant="body2">
                   当前用户名：<strong>{authUsername}</strong>
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  如需修改用户名，请先关闭登录鉴权重新设置
                 </Typography>
 
                 <Divider />
@@ -1527,7 +1549,7 @@ export default function ConfigurationPage() {
                 <Button
                   variant="contained"
                   onClick={() => void handleChangePassword()}
-                  disabled={authLoading}
+                  disabled={authLoading || authRedirectCountdown !== null}
                   startIcon={authLoading ? <CircularProgress size={20} /> : undefined}
                 >
                   {authLoading ? '保存中...' : '修改密码'}
@@ -1543,8 +1565,9 @@ export default function ConfigurationPage() {
                   color="error"
                   onClick={() => void handleDisableAuth()}
                   disabled={authLoading}
+                  startIcon={authLoading ? <CircularProgress size={20} /> : undefined}
                 >
-                  关闭登录鉴权
+                  {authLoading ? '关闭中...' : '关闭登录鉴权'}
                 </Button>
               </Box>
             )}

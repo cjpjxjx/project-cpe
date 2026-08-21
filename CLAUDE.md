@@ -60,9 +60,10 @@ README.md、CLAUDE.md、其他 .md 文档及代码注释遵守：
 │   │   ├── usb_switch.rs     # USB 网络模式切换（调用系统命令）
 │   │   ├── iptables.rs       # 防火墙规则计数/清理
 │   │   ├── serial.rs         # with_serial：串行化对 modem 的并发访问
+│   │   ├── auth.rs           # 密码哈希、内存 session、全局鉴权中间件
+│   │   ├── terminal_proxy.rs # ttyd 反向代理（HTTP + WebSocket）与 ttyd 进程校准
 │   │   ├── utils.rs          # 系统信息采集（CPU/温度/内存/网口）
 │   │   ├── state.rs          # AppState（共享状态：DBus 连接、DB、配置、发送器）
-│   │   └── pin.rs 无 —— 无鉴权层
 │   ├── build.rs              # 编译期注入 VERSION、git branch/commit
 │   ├── Cargo.toml            # 包名 udx710，release profile: strip+lto+panic=abort
 │   └── .cargo/config.toml    # musl 交叉编译 linker 配置
@@ -100,6 +101,8 @@ README.md、CLAUDE.md、其他 .md 文档及代码注释遵守：
 ### 进程与启动
 - 设备开机由 `/home/root/loader.sh` 拉起（内容由 `config.rs` 管理），依次启动：
   1. `/home/root/ttyd/start.sh`（ttyd Web 终端，**独立于本项目的第三方二进制**，监听 7681）
+     - 后端启动时会把该脚本的 ttyd 命令行校准为 `-b /api/terminal/proxy -H X-Remote-User`，
+       ttyd 自身不再做 Basic Auth，改由后端代理注入信任头；运行中的实例不是该模式则自动重启一次
   2. `/home/root/udx710 -p 80`（**本项目后端**，默认监听 80）
   3. `sh /home/root/init.sh`（用户自定义开机脚本，可在 Web「初始化脚本」页面编辑）
 - 后端 `main()` 启动时：连接 system D-Bus → 打开/迁移 SQLite → 加载 config.json → `ensure_loader_hooks_init()` 维护 loader.sh → 启动多个 `tokio::spawn` 后台任务：
@@ -154,7 +157,8 @@ cd backend && cargo build --release --target aarch64-unknown-linux-musl
 - **后端启动参数**：`-p/--port`（默认 3000，设备上以 80 启动）、`-H/--host`（默认 0.0.0.0）、支持 `PORT`/`HOST` 环境变量；日志用 `RUST_LOG` 控制（默认 info）。
 
 ## 开发约定与注意事项
-- 后端**无鉴权层**，设计上假设运行在设备本地可信网络（USB 直连 `192.168.66.1`）。新增端点时沿用现有 `AppState` 注入与 `ApiResponse` 包裹风格即可。
+- 后端鉴权由 `auth.rs` 的全局中间件负责，只拦截 `/api/*`（`/api/auth/login`、`/api/auth/status`、`/api/health` 除外），未启用登录鉴权时全部放行。新增端点沿用现有 `AppState` 注入与 `ApiResponse` 包裹风格即可。
+- Web 终端经 `/api/terminal/proxy` 同源访问，因此复用上述中间件鉴权；前端不再直连 7681 端口。
 - 前端换行统一 LF；仓库 `.editorconfig`/git 会对 `.tsx/.ts/.sh` 做 CRLF↔LF 处理，注意提交时的换行告警属正常。
 - 涉及 modem 的新 D-Bus 调用务必走 `with_serial()`。
 - 敏感信息（IMEI/ICCID/号码等）展示由前端各卡片的 `showInfo` 状态控制，属 UI 层显示开关。

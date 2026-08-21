@@ -48,6 +48,7 @@ mod serial;
 mod sms_push;
 mod sms_listener;
 mod state;
+mod terminal_proxy;
 mod usb_switch;
 mod utils;
 mod webhook;
@@ -256,6 +257,9 @@ async fn main() -> Result<()> {
         });
     }
 
+    // 校准 ttyd：确保 start.sh 带有代理参数，且运行中的实例已是代理模式
+    tokio::spawn(terminal_proxy::ensure_ttyd_proxy_runtime());
+
     // CORS 配置：允许前端开发服务器跨域访问
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -344,6 +348,17 @@ async fn main() -> Result<()> {
         .route("/api/auth/login", post(post_login).options(options_handler))
         .route("/api/auth/logout", post(post_logout).options(options_handler))
         .route("/api/auth/config", get(get_auth_config).post(post_auth_config).options(options_handler))
+        // ========== Web 终端（ttyd）反向代理 ==========
+        // 注入 ttyd 信任的认证头，访问控制由上面的鉴权中间件统一负责
+        //
+        // 三条路由才能覆盖 ttyd 索引页的所有访问形式：`{*path}` 通配符要求斜杠后
+        // 至少有一段非空内容，既不匹配无斜杠的 `/api/terminal/proxy`，也不匹配
+        // 带斜杠但无子路径的 `/api/terminal/proxy/`（iframe 默认请求的正是后者）。
+        .route("/api/terminal/proxy/ws", get(terminal_proxy::terminal_proxy_ws))
+        .route("/api/terminal/proxy", get(terminal_proxy::terminal_proxy_http))
+        .route("/api/terminal/proxy/", get(terminal_proxy::terminal_proxy_http))
+        .route("/api/terminal/proxy/{*path}",
+            get(terminal_proxy::terminal_proxy_http).post(terminal_proxy::terminal_proxy_http))
         // ========== init.sh 管理接口 ==========
         .route("/api/init-script", get(get_init_script_handler).post(set_init_script_handler).options(options_handler))
         // ========== Webhook 配置接口 ==========
