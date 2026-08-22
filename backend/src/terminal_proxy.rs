@@ -225,8 +225,7 @@ async fn tunnel(
         let _ = client_tx.close().await;
     };
 
-    // 隧道建立后不再经过鉴权中间件，需自行跟随会话生命周期：退出登录、改密码触发的
-    // remove_all()、会话过期都应立即断开已连接的终端，否则改密码踢不掉在线的 root shell
+    // 隧道建立后不再经过鉴权中间件，退出登录、改密码、会话过期需要靠这里主动断开
     let session_watch = async {
         let mut ticker = tokio::time::interval(SESSION_CHECK_INTERVAL);
         ticker.tick().await; // interval 的首次 tick 立即完成

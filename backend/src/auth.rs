@@ -239,30 +239,24 @@ pub async fn auth_middleware(State(state): State<AppState>, req: Request, next: 
 
 // ============ 登录接口保护 ============
 
-/// 登录校验的并发上限。Argon2 按哈希串内嵌参数分配内存（8 ~ 19 MiB），而 tokio
-/// 阻塞线程池默认可开到 512 线程，不设闸门时未鉴权来源即可让设备瞬时分配数 GB
-/// 内存触发 OOM。
+/// 登录校验并发上限：Argon2 按哈希串内嵌参数分配 8 ~ 19 MiB 内存，不限制的话
+/// 高并发登录请求可以打爆设备内存
 const LOGIN_MAX_CONCURRENCY: usize = 2;
-/// 单个来源连续失败多少次后进入锁定
-///
-/// 设备在主路由的上级，家庭 LAN 的客户端经主路由 SNAT 后源 IP 恒为主路由的 WAN
-/// 地址，因此这个计数实际是全局的——阈值定得太低，管理员自己手抖几次就会把全家
-/// 关在门外。取 10 次：正常输错口令够用，自动化爆破仍会被挡下。
+/// 单个来源在 `LOGIN_WINDOW` 内连续失败达到该次数即锁定
 const LOGIN_FAILURE_THRESHOLD: u32 = 10;
-/// 首次锁定时长，之后每多失败一次翻倍，上限 `LOGIN_LOCK_MAX`
-const LOGIN_LOCK_BASE: Duration = Duration::from_secs(30);
-const LOGIN_LOCK_MAX: Duration = Duration::from_secs(5 * 60);
+/// 失败计数窗口，也是锁定时长
+const LOGIN_WINDOW: Duration = Duration::from_secs(10 * 60);
 /// 跟踪的来源 IP 上限，超出时淘汰最久未活动的记录
 const LOGIN_TRACKED_SOURCES_MAX: usize = 256;
 
 /// 登录响应的固定最小耗时，抹平各条校验路径之间的时序差异
 pub const LOGIN_MIN_LATENCY: Duration = Duration::from_millis(300);
-/// 口令长度上限：Argon2 的时间开销随口令长度线性增长
+/// 口令长度上限
 pub const PASSWORD_MAX_BYTES: usize = 128;
 /// 启用鉴权时的口令最小长度
 pub const PASSWORD_MIN_BYTES: usize = 8;
 
-/// 登录并发闸门。取不到许可直接拒绝，不排队——排队等于把 Argon2 的内存开销堆在设备上。
+/// 登录并发闸门，取不到许可直接拒绝，不排队
 pub fn login_gate() -> &'static tokio::sync::Semaphore {
     static LOGIN_GATE: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
     LOGIN_GATE.get_or_init(|| tokio::sync::Semaphore::new(LOGIN_MAX_CONCURRENCY))
@@ -308,11 +302,8 @@ pub fn record_login_failure(ip: IpAddr) -> (u32, Option<Duration>) {
         return (record.count, None);
     }
 
-    // 达到阈值后每多失败一次，锁定时长翻倍
-    let factor = 1u32 << (record.count - LOGIN_FAILURE_THRESHOLD).min(16);
-    let lock = LOGIN_LOCK_BASE.saturating_mul(factor).min(LOGIN_LOCK_MAX);
-    record.locked_until = Some(now + lock);
-    (record.count, Some(lock))
+    record.locked_until = Some(now + LOGIN_WINDOW);
+    (record.count, Some(LOGIN_WINDOW))
 }
 
 pub fn clear_login_failures(ip: IpAddr) {
@@ -321,12 +312,9 @@ pub fn clear_login_failures(ip: IpAddr) {
     }
 }
 
-/// 丢弃已超过最长锁定窗口的记录，并给表设容量上限，避免大量来源撑爆内存
-///
-/// 顺带实现了失败计数的自动归零：距上次失败超过 `LOGIN_LOCK_MAX` 的记录会在下一次
-/// 写入时被清掉，平时零星输错口令不会累积到触发锁定。
+/// 丢弃已超过窗口期的记录，并给表设容量上限
 fn prune_login_failures(map: &mut HashMap<IpAddr, FailureRecord>, now: Instant) {
-    map.retain(|_, record| record.last_seen + LOGIN_LOCK_MAX > now);
+    map.retain(|_, record| record.last_seen + LOGIN_WINDOW > now);
     while map.len() >= LOGIN_TRACKED_SOURCES_MAX {
         let Some(oldest) = map
             .iter()

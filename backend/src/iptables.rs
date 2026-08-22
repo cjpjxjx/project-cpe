@@ -78,12 +78,8 @@ pub async fn get_iptables_rule_count() -> Result<IptablesRuleCount, String> {
 
 /// 判断一条 `iptables -S` 输出行是否是本程序维护的 ttyd 端口保护规则
 ///
-/// 计数必须排除这条规则：看门狗「有规则就清空」，而清空后它会被立即补回，算进去
-/// 就会每个看门狗周期 flush 一次，并在补回前留下一个无保护窗口。
-///
-/// 只认端口与动作，不匹配 `! -i lo`：`-S` 会补上 `-m tcp` 等匹配器，接口取反的
-/// 写法也随 iptables 版本而异（`! -i lo` / `-i ! lo`），匹配上去反而容易漏判。
-/// 用户若自己写了同样丢弃该端口的规则，一并排除也符合本意。
+/// 只认端口与动作：`-S` 会补上 `-m tcp` 等匹配器，接口取反的写法也随
+/// iptables 版本而异，匹配 `-i` 部分容易漏判。
 fn is_managed_rule(rule: &str) -> bool {
     rule.contains(&format!("--dport {}", TTYD_PORT)) && rule.contains("-j DROP")
 }
