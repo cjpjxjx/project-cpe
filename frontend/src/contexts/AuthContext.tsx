@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { Box, CircularProgress } from '@mui/material'
 import { api } from '../api'
 
@@ -35,7 +35,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loggedIn, setLoggedIn] = useState(false)
   const [loading, setLoading] = useState(true)
   const [statusKnown, setStatusKnown] = useState(false)
-  const navigate = useNavigate()
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -59,12 +58,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const handleUnauthorized = () => {
       setLoggedIn(false)
-      void navigate('/login', { replace: true })
+      // 整页导航而非路由跳转：会话已失效，没有内存状态需要保留，而重新加载
+      // index.html 能拿到最新的 chunk 清单。软跳转要到此刻才首次拉取登录页
+      // chunk，设备刚重启时这一步很容易失败，且 React.lazy 会缓存失败结果
+      window.location.replace('/login')
     }
 
     window.addEventListener('udx710:unauthorized', handleUnauthorized)
     return () => window.removeEventListener('udx710:unauthorized', handleUnauthorized)
-  }, [navigate])
+  }, [])
 
   const login = async (username: string, password: string) => {
     const response = await api.login(username, password)

@@ -8,7 +8,7 @@
  * 
  * Copyright (c) 2025 by 1orz, All Rights Reserved. 
  */
-import { createElement, lazy, Suspense, useEffect, type ComponentType, type LazyExoticComponent } from 'react'
+import { createElement, Suspense, useEffect, type ComponentType, type LazyExoticComponent } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -30,20 +30,22 @@ import {
 import { ThemeProvider } from './contexts/ThemeContext'
 import { AuthProvider, RequireAuth } from './contexts/AuthContext'
 import { queryClient } from './lib/queryClient'
+import ErrorBoundary from './components/ErrorBoundary'
 import MainLayout from './components/Layout/MainLayout'
+import { lazyWithReload } from './utils/lazyWithReload'
 
 // 路由级别代码分割 - 按需加载页面组件
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const DeviceInfo = lazy(() => import('./pages/DeviceInfo'))
-const Network = lazy(() => import('./pages/Network'))
-const Phone = lazy(() => import('./pages/Phone'))
-const SMS = lazy(() => import('./pages/SMS'))
-const Configuration = lazy(() => import('./pages/Configuration'))
-const InitScript = lazy(() => import('./pages/InitScript'))
-const ATConsole = lazy(() => import('./pages/ATConsole'))
-const Terminal = lazy(() => import('./pages/Terminal'))
-const OtaUpdate = lazy(() => import('./pages/OtaUpdate'))
-const Login = lazy(() => import('./pages/Login'))
+const Dashboard = lazyWithReload(() => import('./pages/Dashboard'))
+const DeviceInfo = lazyWithReload(() => import('./pages/DeviceInfo'))
+const Network = lazyWithReload(() => import('./pages/Network'))
+const Phone = lazyWithReload(() => import('./pages/Phone'))
+const SMS = lazyWithReload(() => import('./pages/SMS'))
+const Configuration = lazyWithReload(() => import('./pages/Configuration'))
+const InitScript = lazyWithReload(() => import('./pages/InitScript'))
+const ATConsole = lazyWithReload(() => import('./pages/ATConsole'))
+const Terminal = lazyWithReload(() => import('./pages/Terminal'))
+const OtaUpdate = lazyWithReload(() => import('./pages/OtaUpdate'))
+const Login = lazyWithReload(() => import('./pages/Login'))
 
 // 页面加载中的 fallback
 function PageLoading() {
@@ -128,34 +130,36 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <BrowserRouter>
-          <AuthProvider>
-            <DocumentTitleAndFavicon />
-            <Routes>
-              <Route path="/login" element={renderLazyPage(Login)} />
-              <Route
-                path="/"
-                element={
-                  <RequireAuth>
-                    <MainLayout />
-                  </RequireAuth>
-                }
-              >
-                {appRoutes.map((route) => (
-                  <Route
-                    key={route.path ?? 'index'}
-                    index={route.index}
-                    path={route.path}
-                    element={renderLazyPage(route.component)}
-                  />
-                ))}
-                {/* 旧路由重定向到网络状态页面 */}
-                <Route path="network-interfaces" element={<Navigate to="/network" replace />} />
-                <Route path="band-lock" element={<Navigate to="/network" replace />} />
-              </Route>
-            </Routes>
-          </AuthProvider>
-        </BrowserRouter>
+        <ErrorBoundary>
+          <BrowserRouter>
+            <AuthProvider>
+              <DocumentTitleAndFavicon />
+              <Routes>
+                <Route path="/login" element={renderLazyPage(Login)} />
+                <Route
+                  path="/"
+                  element={
+                    <RequireAuth>
+                      <MainLayout />
+                    </RequireAuth>
+                  }
+                >
+                  {appRoutes.map((route) => (
+                    <Route
+                      key={route.path ?? 'index'}
+                      index={route.index}
+                      path={route.path}
+                      element={renderLazyPage(route.component)}
+                    />
+                  ))}
+                  {/* 旧路由重定向到网络状态页面 */}
+                  <Route path="network-interfaces" element={<Navigate to="/network" replace />} />
+                  <Route path="band-lock" element={<Navigate to="/network" replace />} />
+                </Route>
+              </Routes>
+            </AuthProvider>
+          </BrowserRouter>
+        </ErrorBoundary>
       </ThemeProvider>
     </QueryClientProvider>
   )

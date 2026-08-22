@@ -325,9 +325,28 @@ const LOGIN_TRACKED_SOURCES_MAX: usize = 256;
 /// 登录响应的固定最小耗时，抹平各条校验路径之间的时序差异
 pub const LOGIN_MIN_LATENCY: Duration = Duration::from_millis(300);
 /// 口令长度上限
-pub const PASSWORD_MAX_BYTES: usize = 128;
+pub const PASSWORD_MAX_LEN: usize = 128;
 /// 启用鉴权时的口令最小长度
-pub const PASSWORD_MIN_BYTES: usize = 8;
+pub const PASSWORD_MIN_LEN: usize = 8;
+
+/// 口令是否只含可见 ASCII 字符（0x21..=0x7E，不含空格）
+pub fn is_visible_ascii(password: &str) -> bool {
+    password.bytes().all(|b| (0x21..=0x7E).contains(&b))
+}
+
+/// 校验口令字符集与长度，`check_min` 为 false 时跳过最小长度检查
+pub fn validate_password(password: &str, check_min: bool) -> Result<(), String> {
+    if !is_visible_ascii(password) {
+        return Err("密码仅支持可见 ASCII 字符（不含空格）".to_string());
+    }
+    if password.len() > PASSWORD_MAX_LEN {
+        return Err(format!("密码长度不能超过 {} 个字符", PASSWORD_MAX_LEN));
+    }
+    if check_min && password.len() < PASSWORD_MIN_LEN {
+        return Err(format!("密码至少需要 {} 个字符", PASSWORD_MIN_LEN));
+    }
+    Ok(())
+}
 
 /// 登录并发闸门，取不到许可直接拒绝，不排队
 pub fn login_gate() -> &'static tokio::sync::Semaphore {

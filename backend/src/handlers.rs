@@ -2684,8 +2684,12 @@ pub async fn post_login(
             .into_response();
     }
 
-    if req.password.len() > crate::auth::PASSWORD_MAX_BYTES {
-        tracing::warn!(client = %ip, "Login rejected: password too long");
+    // 合法口令必然是可见 ASCII 且不超长，不满足的直接按凭据错误处理，
+    // 不进入 Argon2 校验
+    if req.password.len() > crate::auth::PASSWORD_MAX_LEN
+        || !crate::auth::is_visible_ascii(&req.password)
+    {
+        tracing::warn!(client = %ip, "Login rejected: malformed password");
         return (
             StatusCode::UNAUTHORIZED,
             Json(ApiResponse::<()>::error("用户名或密码错误")),
@@ -2829,23 +2833,8 @@ pub async fn post_auth_config(
 ) -> (StatusCode, Json<ApiResponse<()>>) {
     // Argon2 的时间开销随口令长度线性增长，超长口令是一条放大路径
     if let Some(new_password) = req.new_password.as_deref().filter(|p| !p.is_empty()) {
-        if new_password.len() > crate::auth::PASSWORD_MAX_BYTES {
-            return (
-                StatusCode::OK,
-                Json(ApiResponse::error(format!(
-                    "密码长度不能超过 {} 字节",
-                    crate::auth::PASSWORD_MAX_BYTES
-                ))),
-            );
-        }
-        if req.enabled && new_password.len() < crate::auth::PASSWORD_MIN_BYTES {
-            return (
-                StatusCode::OK,
-                Json(ApiResponse::error(format!(
-                    "密码至少需要 {} 个字节",
-                    crate::auth::PASSWORD_MIN_BYTES
-                ))),
-            );
+        if let Err(msg) = crate::auth::validate_password(new_password, req.enabled) {
+            return (StatusCode::OK, Json(ApiResponse::error(msg)));
         }
     }
 

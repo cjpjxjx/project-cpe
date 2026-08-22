@@ -149,18 +149,21 @@ function createDefaultSmsPushConfig(): SmsPushConfig {
   })
 }
 
-// 与后端 auth.rs 的 PASSWORD_MIN_BYTES / PASSWORD_MAX_BYTES 保持一致，按字节计
-const PASSWORD_MIN_BYTES = 8
-const PASSWORD_MAX_BYTES = 128
-const PASSWORD_HELPER_TEXT = `至少 ${PASSWORD_MIN_BYTES} 个字节，最多 ${PASSWORD_MAX_BYTES} 个字节（一个汉字算 3 个字节）`
+// 与后端 auth.rs 的 PASSWORD_MIN_LEN / PASSWORD_MAX_LEN 保持一致
+const PASSWORD_MIN_LEN = 8
+const PASSWORD_MAX_LEN = 128
+const PASSWORD_HELPER_TEXT = `${PASSWORD_MIN_LEN} ~ ${PASSWORD_MAX_LEN} 个字符`
 
-function validatePasswordLength(password: string): string | null {
-  const bytes = new TextEncoder().encode(password).length
-  if (bytes < PASSWORD_MIN_BYTES) {
-    return `密码至少需要 ${PASSWORD_MIN_BYTES} 个字节`
+function validatePassword(password: string): string | null {
+  // 可见 ASCII：0x21..=0x7E，不含空格
+  if (!/^[\x21-\x7E]*$/.test(password)) {
+    return '密码仅支持可见 ASCII 字符（不含空格）'
   }
-  if (bytes > PASSWORD_MAX_BYTES) {
-    return `密码长度不能超过 ${PASSWORD_MAX_BYTES} 个字节`
+  if (password.length < PASSWORD_MIN_LEN) {
+    return `密码至少需要 ${PASSWORD_MIN_LEN} 个字符`
+  }
+  if (password.length > PASSWORD_MAX_LEN) {
+    return `密码长度不能超过 ${PASSWORD_MAX_LEN} 个字符`
   }
   return null
 }
@@ -451,7 +454,7 @@ export default function ConfigurationPage() {
       setError('两次输入的密码不一致')
       return
     }
-    const passwordError = validatePasswordLength(authNewPassword)
+    const passwordError = validatePassword(authNewPassword)
     if (passwordError) {
       setError(passwordError)
       return
@@ -495,7 +498,7 @@ export default function ConfigurationPage() {
       setError('两次输入的新密码不一致')
       return
     }
-    const passwordError = validatePasswordLength(authNewPassword)
+    const passwordError = validatePassword(authNewPassword)
     if (passwordError) {
       setError(passwordError)
       return

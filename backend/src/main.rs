@@ -124,6 +124,20 @@ async fn spa_fallback(uri: Uri) -> Response {
             _ => "application/octet-stream",
         };
         
+        // index.html 引用的是带内容哈希的 chunk 文件名，OTA 换掉 www 后旧副本
+        // 指向的文件已不存在，必须每次回源校验
+        if content_type.starts_with("text/html") {
+            return (
+                StatusCode::OK,
+                [
+                    (axum::http::header::CONTENT_TYPE, content_type),
+                    (axum::http::header::CACHE_CONTROL, "no-cache"),
+                ],
+                content,
+            )
+                .into_response();
+        }
+
         return (
             StatusCode::OK,
             [(axum::http::header::CONTENT_TYPE, content_type)],
@@ -131,12 +145,21 @@ async fn spa_fallback(uri: Uri) -> Response {
         ).into_response();
     }
     
+    // 带扩展名的请求是静态资源，缺失时必须如实返回 404。回退 index.html 会让
+    // 浏览器把一段 HTML 当 ES module 解析，chunk 加载失败为不可恢复的白屏
+    if relative_path.extension().is_some() {
+        return (StatusCode::NOT_FOUND, "Not found").into_response();
+    }
+
     // 如果文件不存在，返回 index.html（SPA 路由）
     let index_path = www_dir.join("index.html");
     match tokio::fs::read(&index_path).await {
         Ok(content) => (
             StatusCode::OK,
-            [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            [
+                (axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                (axum::http::header::CACHE_CONTROL, "no-cache"),
+            ],
             content
         ).into_response(),
         Err(_) => (
