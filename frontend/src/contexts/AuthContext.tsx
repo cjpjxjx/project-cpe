@@ -1,7 +1,8 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { Box, CircularProgress } from '@mui/material'
 import { api } from '../api'
 
 interface AuthContextType {
@@ -83,4 +84,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
       {children}
     </AuthContext.Provider>
   )
+}
+
+/**
+ * 路由守卫：登录状态未知时只渲染占位，未登录时直接跳登录页。
+ *
+ * 不加守卫时未登录用户打开首页会先挂载全部业务页面、并发打出十几个请求，
+ * 全部 401 后才被动跳走，对这台 CPU 紧张的设备是一波无谓负载。
+ */
+export function RequireAuth({ children }: { children: ReactNode }) {
+  const { enabled, loggedIn, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    )
+  }
+
+  if (enabled && !loggedIn) {
+    return <Navigate to="/login" replace />
+  }
+
+  return <>{children}</>
 }

@@ -28,7 +28,7 @@ import {
   Login as LoginIcon,
 } from '@mui/icons-material'
 import { ThemeProvider } from './contexts/ThemeContext'
-import { AuthProvider } from './contexts/AuthContext'
+import { AuthProvider, RequireAuth } from './contexts/AuthContext'
 import { queryClient } from './lib/queryClient'
 import MainLayout from './components/Layout/MainLayout'
 
@@ -133,7 +133,14 @@ function App() {
             <DocumentTitleAndFavicon />
             <Routes>
               <Route path="/login" element={renderLazyPage(Login)} />
-              <Route path="/" element={<MainLayout />}>
+              <Route
+                path="/"
+                element={
+                  <RequireAuth>
+                    <MainLayout />
+                  </RequireAuth>
+                }
+              >
                 {appRoutes.map((route) => (
                   <Route
                     key={route.path ?? 'index'}

@@ -160,8 +160,17 @@ struct Args {
     host: String,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+/// Argon2 校验等阻塞任务跑在 tokio 阻塞线程池里，默认上限 512 线程，单次校验按哈希
+/// 内嵌参数分配 8 ~ 19 MiB 内存，足以在这台设备上触发 OOM，这里给整体阻塞并发兜底
+fn main() -> Result<()> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .max_blocking_threads(16)
+        .build()?;
+    runtime.block_on(run())
+}
+
+async fn run() -> Result<()> {
     // 初始化 tracing 日志框架
     // 通过 RUST_LOG 环境变量控制日志级别，默认为 info
     tracing_subscriber::registry()
@@ -413,9 +422,13 @@ async fn main() -> Result<()> {
     let listener = bind_with_retry(&bind_addr, 30).await?;
     info!(addr = %bind_addr, "Server listening");
     // 使用优雅关闭
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    // 登录接口按来源 IP 做失败锁定，需要 ConnectInfo 提供对端地址
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
 }

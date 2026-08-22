@@ -2660,17 +2660,32 @@ pub async fn clear_call_history_handler(
 // ============ 登录鉴权 API ============
 
 /// POST /api/auth/login - 用户登录
+///
+/// 这是唯一暴露给未鉴权来源的重操作接口，三重保护：并发闸门（Argon2 内存放大）、
+/// 按来源 IP 的失败锁定（在线爆破）、固定最小响应耗时（时序侧信道）。
 pub async fn post_login(
     State(state): State<crate::state::AppState>,
+    axum::extract::ConnectInfo(peer): axum::extract::ConnectInfo<std::net::SocketAddr>,
     Json(req): Json<LoginRequest>,
-) -> impl IntoResponse {
-    let auth = state.config_manager.get_auth();
+) -> axum::response::Response {
+    let started = std::time::Instant::now();
+    let ip = peer.ip();
 
-    let valid = auth.enabled
-        && req.username == auth.username
-        && crate::auth::verify_password(&req.password, &auth.password_hash).await;
+    if let Some(remaining) = crate::auth::login_lock_remaining(ip) {
+        let secs = remaining.as_secs().max(1);
+        tracing::warn!(client = %ip, retry_after_secs = secs, "Login rejected: source locked");
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ApiResponse::<()>::error(format!(
+                "登录失败次数过多，请 {} 秒后再试",
+                secs
+            ))),
+        )
+            .into_response();
+    }
 
-    if !valid {
+    if req.password.len() > crate::auth::PASSWORD_MAX_BYTES {
+        tracing::warn!(client = %ip, "Login rejected: password too long");
         return (
             StatusCode::UNAUTHORIZED,
             Json(ApiResponse::<()>::error("用户名或密码错误")),
@@ -2678,15 +2693,77 @@ pub async fn post_login(
             .into_response();
     }
 
+    // 取不到许可直接拒绝，绝不排队
+    let Ok(_permit) = crate::auth::login_gate().try_acquire() else {
+        tracing::warn!(client = %ip, "Login rejected: verifier busy");
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ApiResponse::<()>::error("登录请求过于频繁，请稍后再试")),
+        )
+            .into_response();
+    };
+
+    let auth = state.config_manager.get_auth();
+    if !auth.enabled {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(ApiResponse::<()>::error("用户名或密码错误")),
+        )
+            .into_response();
+    }
+
+    // 用户名用常量时间比较，且无论用户名是否正确都执行 Argon2：短路会让「用户名
+    // 错误」在微秒级返回，与正确用户名的百毫秒级形成显著差异，可用来枚举用户名
+    let username_ok =
+        crate::auth::constant_time_eq(req.username.as_bytes(), auth.username.as_bytes());
+    let password_ok = crate::auth::verify_password(&req.password, &auth.password_hash).await;
+
+    if !(username_ok && password_ok) {
+        let (failures, lock) = crate::auth::record_login_failure(ip);
+        tracing::warn!(
+            client = %ip,
+            username = %req.username,
+            failures,
+            locked_secs = lock.map_or(0, |d| d.as_secs()),
+            "Login failed"
+        );
+        return pad_login_latency(
+            started,
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(ApiResponse::<()>::error("用户名或密码错误")),
+            )
+                .into_response(),
+        )
+        .await;
+    }
+
+    crate::auth::clear_login_failures(ip);
     let token = state.session_store.create();
     let cookie = crate::auth::build_set_cookie_header(&token);
+    tracing::info!(client = %ip, username = %req.username, "Login succeeded");
 
-    (
-        StatusCode::OK,
-        [(axum::http::header::SET_COOKIE, cookie)],
-        Json(ApiResponse::success_with_message("登录成功", ())),
+    pad_login_latency(
+        started,
+        (
+            StatusCode::OK,
+            [(axum::http::header::SET_COOKIE, cookie)],
+            Json(ApiResponse::success_with_message("登录成功", ())),
+        )
+            .into_response(),
     )
-        .into_response()
+    .await
+}
+
+/// 把登录响应耗时补齐到固定下限，抹平各条校验路径之间的时序差异
+async fn pad_login_latency(
+    started: std::time::Instant,
+    response: axum::response::Response,
+) -> axum::response::Response {
+    if let Some(remaining) = crate::auth::LOGIN_MIN_LATENCY.checked_sub(started.elapsed()) {
+        tokio::time::sleep(remaining).await;
+    }
+    response
 }
 
 /// POST /api/auth/logout - 用户登出
@@ -2750,6 +2827,28 @@ pub async fn post_auth_config(
     State(state): State<crate::state::AppState>,
     Json(req): Json<SetAuthConfigRequest>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
+    // Argon2 的时间开销随口令长度线性增长，超长口令是一条放大路径
+    if let Some(new_password) = req.new_password.as_deref().filter(|p| !p.is_empty()) {
+        if new_password.len() > crate::auth::PASSWORD_MAX_BYTES {
+            return (
+                StatusCode::OK,
+                Json(ApiResponse::error(format!(
+                    "密码长度不能超过 {} 字节",
+                    crate::auth::PASSWORD_MAX_BYTES
+                ))),
+            );
+        }
+        if req.enabled && new_password.len() < crate::auth::PASSWORD_MIN_BYTES {
+            return (
+                StatusCode::OK,
+                Json(ApiResponse::error(format!(
+                    "密码至少需要 {} 个字节",
+                    crate::auth::PASSWORD_MIN_BYTES
+                ))),
+            );
+        }
+    }
+
     let current = state.config_manager.get_auth();
 
     // 已启用鉴权时，任何修改都必须先验证当前密码

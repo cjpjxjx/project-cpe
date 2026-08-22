@@ -7,18 +7,21 @@
 //! `-i lo` 不可省略：`-H` 只要求请求带上指定的头，头值由客户端自由设置，ttyd 一旦
 //! 监听在非回环地址，局域网内任何人带上该头就能取得 root 终端。
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use axum::body::Body;
 use axum::extract::ws::{Message as AxumMessage, WebSocket, WebSocketUpgrade};
-use axum::extract::Request;
+use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use futures_util::{SinkExt, StreamExt};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::Message as TungMessage;
 use tracing::{debug, error, info, warn};
+
+use crate::state::AppState;
 
 /// ttyd 监听地址
 const TTYD_ADDR: &str = "127.0.0.1:7681";
@@ -119,8 +122,38 @@ pub async fn terminal_proxy_http(req: Request) -> Response {
     response
 }
 
+/// 并发终端隧道上限，每条隧道对应一个 ttyd 会话（一个 shell 进程）
+const MAX_TUNNELS: usize = 4;
+/// 隧道建立后回查会话有效性的间隔
+const SESSION_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+
+fn tunnel_gate() -> &'static Arc<Semaphore> {
+    static GATE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    GATE.get_or_init(|| Arc::new(Semaphore::new(MAX_TUNNELS)))
+}
+
+/// 未启用鉴权时无会话可言，一律视为有效
+fn session_still_valid(state: &AppState, token: Option<&str>) -> bool {
+    if !state.config_manager.get_auth().enabled {
+        return true;
+    }
+    token.is_some_and(|token| state.session_store.validate(token))
+}
+
 /// GET /api/terminal/proxy/ws - 将终端 WebSocket 隧道到 ttyd
-pub async fn terminal_proxy_ws(ws: WebSocketUpgrade, headers: HeaderMap) -> Response {
+pub async fn terminal_proxy_ws(
+    State(state): State<AppState>,
+    ws: WebSocketUpgrade,
+    headers: HeaderMap,
+) -> Response {
+    let Ok(permit) = tunnel_gate().clone().try_acquire_owned() else {
+        warn!(max = MAX_TUNNELS, "Rejected terminal tunnel: too many concurrent sessions");
+        return (StatusCode::SERVICE_UNAVAILABLE, "终端会话数已达上限").into_response();
+    };
+
+    // 升级只在这一刻经过鉴权中间件，之后由隧道自己按 token 跟随会话生命周期
+    let token = crate::auth::extract_session_token(&headers);
+
     // ttyd 客户端使用 "tty" 子协议，握手两端都必须带上
     let protocol = headers
         .get(PROTOCOL_HEADER_KEY)
@@ -135,11 +168,17 @@ pub async fn terminal_proxy_ws(ws: WebSocketUpgrade, headers: HeaderMap) -> Resp
         None => ws,
     };
 
-    upgrade.on_upgrade(move |socket| tunnel(socket, upstream_protocol))
+    upgrade.on_upgrade(move |socket| tunnel(socket, upstream_protocol, state, token, permit))
 }
 
-/// 在浏览器与 ttyd 之间双向搬运 WebSocket 消息，任一端断开即整体结束
-async fn tunnel(client: WebSocket, protocol: Option<String>) {
+/// 在浏览器与 ttyd 之间双向搬运 WebSocket 消息，任一端断开或会话失效即整体结束
+async fn tunnel(
+    client: WebSocket,
+    protocol: Option<String>,
+    state: AppState,
+    token: Option<String>,
+    _permit: OwnedSemaphorePermit,
+) {
     let url = format!("ws://{}{}/ws", TTYD_ADDR, TTYD_BASE_PATH);
 
     let mut request = match url.as_str().into_client_request() {
@@ -186,9 +225,25 @@ async fn tunnel(client: WebSocket, protocol: Option<String>) {
         let _ = client_tx.close().await;
     };
 
+    // 隧道建立后不再经过鉴权中间件，需自行跟随会话生命周期：退出登录、改密码触发的
+    // remove_all()、会话过期都应立即断开已连接的终端，否则改密码踢不掉在线的 root shell
+    let session_watch = async {
+        let mut ticker = tokio::time::interval(SESSION_CHECK_INTERVAL);
+        ticker.tick().await; // interval 的首次 tick 立即完成
+        loop {
+            ticker.tick().await;
+            if !session_still_valid(&state, token.as_deref()) {
+                info!("Terminal session revoked, closing tunnel");
+                break;
+            }
+        }
+    };
+
+    // 任一分支结束时其余 future 一并被丢弃，两侧套接字随之关闭
     tokio::select! {
         _ = client_to_ttyd => {}
         _ = ttyd_to_client => {}
+        _ = session_watch => {}
     }
 
     debug!("ttyd websocket tunnel closed");

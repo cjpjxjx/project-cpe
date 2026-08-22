@@ -4,6 +4,7 @@
 //! Session 只存内存，不落库，设备重启即失效。
 
 use std::collections::HashMap;
+use std::net::IpAddr;
 use std::sync::{Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
@@ -234,4 +235,108 @@ pub async fn auth_middleware(State(state): State<AppState>, req: Request, next: 
     }
 
     next.run(req).await
+}
+
+// ============ 登录接口保护 ============
+
+/// 登录校验的并发上限。Argon2 按哈希串内嵌参数分配内存（8 ~ 19 MiB），而 tokio
+/// 阻塞线程池默认可开到 512 线程，不设闸门时未鉴权来源即可让设备瞬时分配数 GB
+/// 内存触发 OOM。
+const LOGIN_MAX_CONCURRENCY: usize = 2;
+/// 单个来源连续失败多少次后进入锁定
+const LOGIN_FAILURE_THRESHOLD: u32 = 5;
+/// 首次锁定时长，之后每多失败一次翻倍，上限 `LOGIN_LOCK_MAX`
+const LOGIN_LOCK_BASE: Duration = Duration::from_secs(30);
+const LOGIN_LOCK_MAX: Duration = Duration::from_secs(15 * 60);
+/// 跟踪的来源 IP 上限，超出时淘汰最久未活动的记录
+const LOGIN_TRACKED_SOURCES_MAX: usize = 256;
+
+/// 登录响应的固定最小耗时，抹平各条校验路径之间的时序差异
+pub const LOGIN_MIN_LATENCY: Duration = Duration::from_millis(300);
+/// 口令长度上限：Argon2 的时间开销随口令长度线性增长
+pub const PASSWORD_MAX_BYTES: usize = 128;
+/// 启用鉴权时的口令最小长度
+pub const PASSWORD_MIN_BYTES: usize = 8;
+
+/// 登录并发闸门。取不到许可直接拒绝，不排队——排队等于把 Argon2 的内存开销堆在设备上。
+pub fn login_gate() -> &'static tokio::sync::Semaphore {
+    static LOGIN_GATE: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
+    LOGIN_GATE.get_or_init(|| tokio::sync::Semaphore::new(LOGIN_MAX_CONCURRENCY))
+}
+
+struct FailureRecord {
+    count: u32,
+    locked_until: Option<Instant>,
+    last_seen: Instant,
+}
+
+fn login_failures() -> &'static Mutex<HashMap<IpAddr, FailureRecord>> {
+    static FAILURES: OnceLock<Mutex<HashMap<IpAddr, FailureRecord>>> = OnceLock::new();
+    FAILURES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 该来源剩余的锁定时间，`None` 表示未锁定
+pub fn login_lock_remaining(ip: IpAddr) -> Option<Duration> {
+    let map = login_failures().lock().ok()?;
+    map.get(&ip)?
+        .locked_until
+        .and_then(|until| until.checked_duration_since(Instant::now()))
+}
+
+/// 记录一次失败，返回累计失败次数与本次触发的锁定时长
+pub fn record_login_failure(ip: IpAddr) -> (u32, Option<Duration>) {
+    let now = Instant::now();
+    let Ok(mut map) = login_failures().lock() else {
+        return (0, None);
+    };
+
+    prune_login_failures(&mut map, now);
+
+    let record = map.entry(ip).or_insert(FailureRecord {
+        count: 0,
+        locked_until: None,
+        last_seen: now,
+    });
+    record.count += 1;
+    record.last_seen = now;
+
+    if record.count < LOGIN_FAILURE_THRESHOLD {
+        return (record.count, None);
+    }
+
+    // 达到阈值后每多失败一次，锁定时长翻倍
+    let factor = 1u32 << (record.count - LOGIN_FAILURE_THRESHOLD).min(16);
+    let lock = LOGIN_LOCK_BASE.saturating_mul(factor).min(LOGIN_LOCK_MAX);
+    record.locked_until = Some(now + lock);
+    (record.count, Some(lock))
+}
+
+pub fn clear_login_failures(ip: IpAddr) {
+    if let Ok(mut map) = login_failures().lock() {
+        map.remove(&ip);
+    }
+}
+
+/// 丢弃已超过最长锁定窗口的记录，并给表设容量上限，避免大量来源撑爆内存
+fn prune_login_failures(map: &mut HashMap<IpAddr, FailureRecord>, now: Instant) {
+    map.retain(|_, record| record.last_seen + LOGIN_LOCK_MAX > now);
+    while map.len() >= LOGIN_TRACKED_SOURCES_MAX {
+        let Some(oldest) = map
+            .iter()
+            .min_by_key(|(_, record)| record.last_seen)
+            .map(|(ip, _)| *ip)
+        else {
+            break;
+        };
+        map.remove(&oldest);
+    }
+}
+
+/// 常量时间比较。长度不同时仍会提前返回（长度本身不是秘密），内容比较不短路，
+/// 避免「用户名前缀正确到第几位」被时序区分出来。
+pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }

@@ -149,6 +149,22 @@ function createDefaultSmsPushConfig(): SmsPushConfig {
   })
 }
 
+// 与后端 auth.rs 的 PASSWORD_MIN_BYTES / PASSWORD_MAX_BYTES 保持一致，按字节计
+const PASSWORD_MIN_BYTES = 8
+const PASSWORD_MAX_BYTES = 128
+const PASSWORD_HELPER_TEXT = `至少 ${PASSWORD_MIN_BYTES} 个字节，最多 ${PASSWORD_MAX_BYTES} 个字节（一个汉字算 3 个字节）`
+
+function validatePasswordLength(password: string): string | null {
+  const bytes = new TextEncoder().encode(password).length
+  if (bytes < PASSWORD_MIN_BYTES) {
+    return `密码至少需要 ${PASSWORD_MIN_BYTES} 个字节`
+  }
+  if (bytes > PASSWORD_MAX_BYTES) {
+    return `密码长度不能超过 ${PASSWORD_MAX_BYTES} 个字节`
+  }
+  return null
+}
+
 export default function ConfigurationPage() {
   const { refreshInterval, refreshKey } = useRefreshInterval()
   const [loading, setLoading] = useState(true)
@@ -434,6 +450,11 @@ export default function ConfigurationPage() {
       setError('两次输入的密码不一致')
       return
     }
+    const passwordError = validatePasswordLength(authNewPassword)
+    if (passwordError) {
+      setError(passwordError)
+      return
+    }
     setAuthLoading(true)
     setError(null)
     try {
@@ -471,6 +492,11 @@ export default function ConfigurationPage() {
     }
     if (authNewPassword !== authConfirmPassword) {
       setError('两次输入的新密码不一致')
+      return
+    }
+    const passwordError = validatePasswordLength(authNewPassword)
+    if (passwordError) {
+      setError(passwordError)
       return
     }
     setAuthLoading(true)
@@ -1496,6 +1522,7 @@ export default function ConfigurationPage() {
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setAuthNewPassword(e.target.value)}
                   fullWidth
                   size="small"
+                  helperText={PASSWORD_HELPER_TEXT}
                 />
                 <TextField
                   label="确认密码"
@@ -1541,6 +1568,7 @@ export default function ConfigurationPage() {
                   onChange={(e: ChangeEvent<HTMLInputElement>) => setAuthNewPassword(e.target.value)}
                   fullWidth
                   size="small"
+                  helperText={PASSWORD_HELPER_TEXT}
                 />
                 <TextField
                   label="确认新密码"

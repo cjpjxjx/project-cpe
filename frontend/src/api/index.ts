@@ -88,14 +88,23 @@ const API_BASE = '/api'
 // 压制窗口结束后仍未跳转（如倒计时被打断），全局兜底逻辑照常恢复生效。
 let unauthorizedRedirectSuppressedUntil = 0
 
+// 一屏卡片会并发失败，逐个派发事件等于连续触发多次 navigate，同一时间窗内只派发一次
+const UNAUTHORIZED_NOTIFY_INTERVAL_MS = 1000
+let lastUnauthorizedNotifiedAt = 0
+
 export function suppressUnauthorizedRedirect(ms: number) {
   unauthorizedRedirectSuppressedUntil = Date.now() + ms
 }
 
 function notifyUnauthorized() {
-  if (Date.now() < unauthorizedRedirectSuppressedUntil) {
+  const now = Date.now()
+  if (now < unauthorizedRedirectSuppressedUntil) {
     return
   }
+  if (now - lastUnauthorizedNotifiedAt < UNAUTHORIZED_NOTIFY_INTERVAL_MS) {
+    return
+  }
+  lastUnauthorizedNotifiedAt = now
   window.dispatchEvent(new Event('udx710:unauthorized'))
 }
 
