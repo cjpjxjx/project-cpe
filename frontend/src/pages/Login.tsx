@@ -52,12 +52,19 @@ export default function Login() {
   return (
     <Box
       sx={{
+        // 键盘弹出时 100vh 不变，卡片仍按整屏居中，在小屏上正好落进被键盘
+        // 遮住的下半屏。dvh 会跟随可见区收缩（配合 index.html 的
+        // interactive-widget=resizes-content），窄屏再改为顶部对齐兜底
         minHeight: '100vh',
+        '@supports (min-height: 100dvh)': {
+          minHeight: '100dvh',
+        },
         display: 'flex',
-        alignItems: 'center',
+        alignItems: { xs: 'flex-start', sm: 'center' },
         justifyContent: 'center',
         bgcolor: 'background.default',
         p: 2,
+        py: { xs: 4, sm: 2 },
       }}
     >
       <Card sx={{ maxWidth: 380, width: '100%' }}>
