@@ -19,7 +19,6 @@
  * Copyright (c) 2025 by 1orz, All Rights Reserved. 
  */
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import {
   AppBar,
   Toolbar,
@@ -63,7 +62,6 @@ export default function TopBar({
   const { mode, setMode } = useTheme()
   const { triggerRefresh } = useRefreshInterval()
   const { enabled: authEnabled, logout } = useAuth()
-  const navigate = useNavigate()
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [refreshMenuAnchor, setRefreshMenuAnchor] = useState<null | HTMLElement>(null)
   const [themeMenuAnchor, setThemeMenuAnchor] = useState<null | HTMLElement>(null)
@@ -108,7 +106,8 @@ export default function TopBar({
 
   const handleLogout = () => {
     handleMenuClose()
-    void logout().then(() => navigate('/login'))
+    // 跳转交给 RequireAuth：logout() 置 loggedIn=false 后它会 replace 到登录页
+    void logout()
   }
 
   const getRefreshLabel = () => {

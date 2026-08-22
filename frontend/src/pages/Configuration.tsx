@@ -224,7 +224,8 @@ export default function ConfigurationPage() {
   useEffect(() => {
     if (authRedirectCountdown === null) return
     if (authRedirectCountdown <= 0) {
-      void refreshAuthStatus()
+      // 刷新失败时也要退出倒计时态，否则提示永不消失、鉴权按钮永久禁用
+      void refreshAuthStatus().finally(() => setAuthRedirectCountdown(null))
       return
     }
     const timer = window.setTimeout(() => {
@@ -533,6 +534,9 @@ export default function ConfigurationPage() {
     setAuthLoading(true)
     setError(null)
     try {
+      // 后端先清会话再落盘 enabled:false，这段窗口内在飞的轮询会拿到 401；
+      // 压制兜底跳转，避免鉴权已关闭却被踢到登录页
+      suppressUnauthorizedRedirect(3500)
       const response = await api.setAuthConfig({
         enabled: false,
         username: authUsername.trim(),
@@ -541,11 +545,17 @@ export default function ConfigurationPage() {
       if (response.status === 'ok') {
         setSuccess('面板登录鉴权已关闭')
         setAuthCurrentPassword('')
+        setAuthNewPassword('')
+        setAuthConfirmPassword('')
         await refreshAuthStatus()
       } else {
+        // 密码错误等失败走的是 200 + status:"error"，鉴权并未关闭，
+        // 立刻撤销压制，否则反复试错会持续延长窗口、把真正的会话过期一起吞掉
+        suppressUnauthorizedRedirect(0)
         setError(response.message)
       }
     } catch (err) {
+      suppressUnauthorizedRedirect(0)
       setError(err instanceof Error ? err.message : String(err))
     } finally {
       setAuthLoading(false)

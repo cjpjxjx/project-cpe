@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import {
   Box,
   Card,
@@ -13,7 +13,7 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Login() {
-  const { login } = useAuth()
+  const { login, enabled, loggedIn, loading: authLoading, statusKnown } = useAuth()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -34,6 +34,21 @@ export default function Login() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+        <CircularProgress />
+      </Box>
+    )
+  }
+
+  // 鉴权已关闭时后端无条件拒绝登录，停在此页会陷入「密码怎么填都不对」的死角。
+  // 必须限定 statusKnown：状态没取到时 enabled 也是 false，据此跳首页会与
+  // RequireAuth 来回弹跳
+  if (statusKnown && (!enabled || loggedIn)) {
+    return <Navigate to="/" replace />
+  }
+
   return (
     <Box
       sx={{
@@ -48,7 +63,11 @@ export default function Login() {
       <Card sx={{ maxWidth: 380, width: '100%' }}>
         <CardContent sx={{ p: 4 }}>
           <Box display="flex" flexDirection="column" alignItems="center" mb={3}>
-            <Typography variant="h4" fontWeight={600}>
+            <Typography
+              variant="h4"
+              fontWeight={600}
+              sx={{ fontSize: { xs: '1.5rem', sm: '2.125rem' }, whiteSpace: 'nowrap' }}
+            >
               UDX710 控制面板
             </Typography>
           </Box>

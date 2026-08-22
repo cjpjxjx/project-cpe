@@ -23,6 +23,9 @@ use crate::state::AppState;
 
 pub const SESSION_COOKIE_NAME: &str = "udx710_session";
 const SESSION_TTL: Duration = Duration::from_secs(24 * 60 * 60);
+/// 剩余有效期低于此值时，校验会顺带把会话续到完整 TTL。
+/// 取 TTL 的一半，避免每个请求都去抢写锁。
+const SESSION_RENEW_AFTER: Duration = Duration::from_secs(12 * 60 * 60);
 
 /// 无需鉴权即可访问的路径前缀
 const PUBLIC_PATHS: &[&str] = &["/api/auth/login", "/api/auth/status", "/api/health"];
@@ -127,6 +130,14 @@ pub fn generate_session_token() -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
+/// 会话校验结果
+pub struct SessionCheck {
+    pub valid: bool,
+    /// 本次校验是否续了期。续期后需要随响应重新下发 Set-Cookie，
+    /// 否则浏览器侧仍按登录时的 Max-Age 到点丢弃 cookie
+    pub renewed: bool,
+}
+
 /// 内存 session 存储，token -> 过期时间
 pub struct SessionStore {
     sessions: RwLock<HashMap<String, Instant>>,
@@ -154,6 +165,40 @@ impl SessionStore {
             .unwrap()
             .get(token)
             .is_some_and(|expires_at| *expires_at > Instant::now())
+    }
+
+    /// 校验并在剩余有效期不足时续期，实现滑动过期。
+    ///
+    /// 固定 24 小时绝对过期会在用户正操作时突然失效（页面轮询会立刻撞上 401，
+    /// 表单填到一半被踢到登录页），持续使用的会话应当一直有效。
+    pub fn validate_renewing(&self, token: &str) -> SessionCheck {
+        let now = Instant::now();
+
+        // 快路径：绝大多数请求离续期阈值还很远，只用读锁
+        {
+            let sessions = self.sessions.read().unwrap();
+            match sessions.get(token) {
+                None => return SessionCheck { valid: false, renewed: false },
+                Some(expires_at) => {
+                    if *expires_at <= now {
+                        return SessionCheck { valid: false, renewed: false };
+                    }
+                    if *expires_at - now > SESSION_RENEW_AFTER {
+                        return SessionCheck { valid: true, renewed: false };
+                    }
+                }
+            }
+        }
+
+        // 读锁释放到写锁获取之间，会话可能已被登出或改密码清掉
+        let mut sessions = self.sessions.write().unwrap();
+        match sessions.get_mut(token) {
+            Some(expires_at) if *expires_at > now => {
+                *expires_at = now + SESSION_TTL;
+                SessionCheck { valid: true, renewed: true }
+            }
+            _ => SessionCheck { valid: false, renewed: false },
+        }
     }
 
     pub fn remove(&self, token: &str) {
@@ -223,10 +268,23 @@ pub async fn auth_middleware(State(state): State<AppState>, req: Request, next: 
         return next.run(req).await;
     }
 
-    let authorized = extract_session_token(req.headers())
-        .is_some_and(|token| state.session_store.validate(&token));
+    // 这两个端点会主动废弃会话：登出删除当前会话并下发清除 cookie，改密码/开关
+    // 鉴权会清空全部会话。它们一律不续期——续了期却不能下发 cookie 的话，
+    // 服务端已经把剩余时间推回满值，此后 12 小时都不会再触发续期，
+    // 浏览器侧 cookie 反而等不到刷新，到点照样被丢弃
+    let skip_renewal = path == "/api/auth/logout" || path == "/api/auth/config";
 
-    if !authorized {
+    let token = extract_session_token(req.headers());
+    let check = match token.as_deref() {
+        None => SessionCheck { valid: false, renewed: false },
+        Some(token) if skip_renewal => SessionCheck {
+            valid: state.session_store.validate(token),
+            renewed: false,
+        },
+        Some(token) => state.session_store.validate_renewing(token),
+    };
+
+    if !check.valid {
         return (
             StatusCode::UNAUTHORIZED,
             Json(ApiResponse::<()>::error("未登录或会话已过期")),
@@ -234,7 +292,22 @@ pub async fn auth_middleware(State(state): State<AppState>, req: Request, next: 
             .into_response();
     }
 
-    next.run(req).await
+    let mut response = next.run(req).await;
+
+    // 服务端续期后必须同步刷新 cookie 的 Max-Age，否则浏览器仍按登录时的
+    // 到期时间丢弃 cookie，滑动过期就形同虚设
+    if check.renewed {
+        if let Some(token) = token.as_deref() {
+            let cookie = build_set_cookie_header(token);
+            if !cookie.is_empty() {
+                response
+                    .headers_mut()
+                    .append(axum::http::header::SET_COOKIE, cookie);
+            }
+        }
+    }
+
+    response
 }
 
 // ============ 登录接口保护 ============

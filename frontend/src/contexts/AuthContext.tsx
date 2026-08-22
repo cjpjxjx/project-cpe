@@ -9,6 +9,8 @@ interface AuthContextType {
   enabled: boolean
   loggedIn: boolean
   loading: boolean
+  /** 是否成功取到过鉴权状态。取不到时 enabled 仍是默认的 false，不能据此认定鉴权已关闭 */
+  statusKnown: boolean
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
   refreshStatus: () => Promise<void>
@@ -32,6 +34,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [enabled, setEnabled] = useState(false)
   const [loggedIn, setLoggedIn] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [statusKnown, setStatusKnown] = useState(false)
   const navigate = useNavigate()
 
   const refreshStatus = useCallback(async () => {
@@ -40,6 +43,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (response.status === 'ok' && response.data) {
         setEnabled(response.data.enabled)
         setLoggedIn(response.data.logged_in)
+        setStatusKnown(true)
       }
     } catch (error) {
       console.warn('获取登录状态失败:', error)
@@ -55,7 +59,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   useEffect(() => {
     const handleUnauthorized = () => {
       setLoggedIn(false)
-      void navigate('/login')
+      void navigate('/login', { replace: true })
     }
 
     window.addEventListener('udx710:unauthorized', handleUnauthorized)
@@ -69,18 +73,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
     setLoggedIn(true)
     setEnabled(true)
+    setStatusKnown(true)
   }
 
   const logout = async () => {
     try {
       await api.logout()
+    } catch (error) {
+      // 会话可能已在服务端失效（改密码、别处关闭鉴权），登出请求本身 401 不影响结果
+      console.warn('登出请求失败:', error)
     } finally {
       setLoggedIn(false)
     }
   }
 
   return (
-    <AuthContext.Provider value={{ enabled, loggedIn, loading, login, logout, refreshStatus }}>
+    <AuthContext.Provider
+      value={{ enabled, loggedIn, loading, statusKnown, login, logout, refreshStatus }}
+    >
       {children}
     </AuthContext.Provider>
   )
