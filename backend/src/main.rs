@@ -160,17 +160,8 @@ struct Args {
     host: String,
 }
 
-/// Argon2 校验等阻塞任务跑在 tokio 阻塞线程池里，默认上限 512 线程，单次校验按哈希
-/// 内嵌参数分配 8 ~ 19 MiB 内存，足以在这台设备上触发 OOM，这里给整体阻塞并发兜底
-fn main() -> Result<()> {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .max_blocking_threads(16)
-        .build()?;
-    runtime.block_on(run())
-}
-
-async fn run() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // 初始化 tracing 日志框架
     // 通过 RUST_LOG 环境变量控制日志级别，默认为 info
     tracing_subscriber::registry()

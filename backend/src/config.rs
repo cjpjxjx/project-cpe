@@ -633,8 +633,8 @@ fn is_ttyd_command_line(line: &str) -> bool {
 
 /// 从 token 列表中移除由本项目托管的 ttyd 参数（幂等处理）
 ///
-/// 含历史版本写入的 Basic Auth 参数，切换到代理模式后不再需要；也含监听接口参数，
-/// 由 `patch_ttyd_proxy_line` 统一重写为回环接口。
+/// 含 `-c` 凭据参数，代理模式下由后端统一鉴权，start.sh 里若有则一并剥离；也含监听
+/// 接口参数，由 `patch_ttyd_proxy_line` 统一重写为回环接口。
 fn strip_ttyd_managed_flags(tokens: &[String]) -> Vec<String> {
     const FLAGS_WITH_VALUE: &[&str] = &[
         "-c",

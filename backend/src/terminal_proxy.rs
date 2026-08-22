@@ -1,6 +1,6 @@
 //! Web 终端（ttyd）反向代理
 //!
-//! ttyd 以 `-i lo -b /api/terminal/proxy -H X-Remote-User` 启动，自身不再校验 Basic Auth，
+//! ttyd 以 `-i lo -b /api/terminal/proxy -H X-Remote-User` 启动，自身不做鉴权，
 //! 改由本模块在请求通过管理后台鉴权中间件后注入该请求头放行。请求路径原样透传，
 //! 由 ttyd 依据 `-b` 自行处理。
 //!

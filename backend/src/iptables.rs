@@ -37,7 +37,8 @@ impl IptablesRuleCount {
 
 /// 获取 iptables 规则数量
 ///
-/// 统计 iptables 和 ip6tables 中 filter 表的规则数量（排除默认策略行）
+/// 统计 iptables 和 ip6tables 中 filter 表的规则数量（排除默认策略行与本程序自己
+/// 维护的规则，见 `is_managed_rule`）
 ///
 /// # Returns
 /// * `Ok(IptablesRuleCount)` - 规则统计
@@ -45,7 +46,7 @@ impl IptablesRuleCount {
 pub async fn get_iptables_rule_count() -> Result<IptablesRuleCount, String> {
     task::spawn_blocking(|| {
         let mut count = IptablesRuleCount::default();
-        
+
         // 获取 iptables 规则数量
         // iptables -L -n 输出中，每条规则是一行，但需要排除链名行和策略行
         // 使用 iptables -S 更简单，每条规则一行，-P 开头的是策略，-A 开头的是规则
@@ -54,25 +55,37 @@ pub async fn get_iptables_rule_count() -> Result<IptablesRuleCount, String> {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 // 统计 -A 开头的行（实际规则），排除 -P（策略）和 -N（链定义）
                 count.ipv4_rules = stdout.lines()
-                    .filter(|line| line.starts_with("-A "))
+                    .filter(|line| line.starts_with("-A ") && !is_managed_rule(line))
                     .count();
             }
         }
-        
+
         // 获取 ip6tables 规则数量
         if let Ok(output) = Command::new("ip6tables").args(["-S"]).output() {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 count.ipv6_rules = stdout.lines()
-                    .filter(|line| line.starts_with("-A "))
+                    .filter(|line| line.starts_with("-A ") && !is_managed_rule(line))
                     .count();
             }
         }
-        
+
         Ok(count)
     })
     .await
     .map_err(|e| format!("Task execution failed: {}", e))?
+}
+
+/// 判断一条 `iptables -S` 输出行是否是本程序维护的 ttyd 端口保护规则
+///
+/// 计数必须排除这条规则：看门狗「有规则就清空」，而清空后它会被立即补回，算进去
+/// 就会每个看门狗周期 flush 一次，并在补回前留下一个无保护窗口。
+///
+/// 只认端口与动作，不匹配 `! -i lo`：`-S` 会补上 `-m tcp` 等匹配器，接口取反的
+/// 写法也随 iptables 版本而异（`! -i lo` / `-i ! lo`），匹配上去反而容易漏判。
+/// 用户若自己写了同样丢弃该端口的规则，一并排除也符合本意。
+fn is_managed_rule(rule: &str) -> bool {
+    rule.contains(&format!("--dport {}", TTYD_PORT)) && rule.contains("-j DROP")
 }
 
 /// 清空所有 iptables 规则

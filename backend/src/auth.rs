@@ -244,10 +244,14 @@ pub async fn auth_middleware(State(state): State<AppState>, req: Request, next: 
 /// 内存触发 OOM。
 const LOGIN_MAX_CONCURRENCY: usize = 2;
 /// 单个来源连续失败多少次后进入锁定
-const LOGIN_FAILURE_THRESHOLD: u32 = 5;
+///
+/// 设备在主路由的上级，家庭 LAN 的客户端经主路由 SNAT 后源 IP 恒为主路由的 WAN
+/// 地址，因此这个计数实际是全局的——阈值定得太低，管理员自己手抖几次就会把全家
+/// 关在门外。取 10 次：正常输错口令够用，自动化爆破仍会被挡下。
+const LOGIN_FAILURE_THRESHOLD: u32 = 10;
 /// 首次锁定时长，之后每多失败一次翻倍，上限 `LOGIN_LOCK_MAX`
 const LOGIN_LOCK_BASE: Duration = Duration::from_secs(30);
-const LOGIN_LOCK_MAX: Duration = Duration::from_secs(15 * 60);
+const LOGIN_LOCK_MAX: Duration = Duration::from_secs(5 * 60);
 /// 跟踪的来源 IP 上限，超出时淘汰最久未活动的记录
 const LOGIN_TRACKED_SOURCES_MAX: usize = 256;
 
@@ -318,6 +322,9 @@ pub fn clear_login_failures(ip: IpAddr) {
 }
 
 /// 丢弃已超过最长锁定窗口的记录，并给表设容量上限，避免大量来源撑爆内存
+///
+/// 顺带实现了失败计数的自动归零：距上次失败超过 `LOGIN_LOCK_MAX` 的记录会在下一次
+/// 写入时被清掉，平时零星输错口令不会累积到触发锁定。
 fn prune_login_failures(map: &mut HashMap<IpAddr, FailureRecord>, now: Instant) {
     map.retain(|_, record| record.last_seen + LOGIN_LOCK_MAX > now);
     while map.len() >= LOGIN_TRACKED_SOURCES_MAX {
