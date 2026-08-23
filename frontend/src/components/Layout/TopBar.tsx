@@ -30,6 +30,8 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  Snackbar,
+  Alert,
 } from '@mui/material'
 import {
   Menu as MenuIcon,
@@ -41,10 +43,16 @@ import {
   Speed as SpeedIcon,
   Palette as PaletteIcon,
   Logout as LogoutIcon,
+  RestartAlt as RestartAltIcon,
 } from '@mui/icons-material'
+import { api } from '../../api'
+import ConfirmDialog from '../ConfirmDialog'
+import ErrorSnackbar from '../ErrorSnackbar'
 import { useTheme } from '../../contexts/ThemeContext'
 import { useRefreshInterval } from '../../contexts/RefreshContext'
 import { useAuth } from '../../contexts/AuthContext'
+
+const REBOOT_DELAY_SECONDS = 3
 
 interface TopBarProps {
   drawerWidth: number
@@ -65,6 +73,10 @@ export default function TopBar({
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [refreshMenuAnchor, setRefreshMenuAnchor] = useState<null | HTMLElement>(null)
   const [themeMenuAnchor, setThemeMenuAnchor] = useState<null | HTMLElement>(null)
+  const [rebootConfirmOpen, setRebootConfirmOpen] = useState(false)
+  const [rebooting, setRebooting] = useState(false)
+  const [rebootError, setRebootError] = useState<string | null>(null)
+  const [rebootSuccess, setRebootSuccess] = useState<string | null>(null)
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget)
@@ -108,6 +120,29 @@ export default function TopBar({
     handleMenuClose()
     // 跳转交给 RequireAuth：logout() 置 loggedIn=false 后它会 replace 到登录页
     void logout()
+  }
+
+  const handleRebootClick = () => {
+    handleMenuClose()
+    setRebootConfirmOpen(true)
+  }
+
+  const handleRebootConfirm = () => {
+    void rebootDevice()
+  }
+
+  const rebootDevice = async () => {
+    setRebooting(true)
+    setRebootError(null)
+    try {
+      await api.systemReboot(REBOOT_DELAY_SECONDS)
+      setRebootConfirmOpen(false)
+      setRebootSuccess(`设备将在 ${REBOOT_DELAY_SECONDS} 秒后重启...`)
+    } catch (err) {
+      setRebootError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRebooting(false)
+    }
   }
 
   const getRefreshLabel = () => {
@@ -228,6 +263,16 @@ export default function TopBar({
             </Typography>
           </MenuItem>
 
+          <Divider />
+
+          {/* 重启设备 */}
+          <MenuItem onClick={handleRebootClick}>
+            <ListItemIcon>
+              <RestartAltIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>重启设备</ListItemText>
+          </MenuItem>
+
           {authEnabled && (
             <>
               <Divider />
@@ -331,6 +376,29 @@ export default function TopBar({
             手动刷新
           </MenuItem>
         </Menu>
+
+        <ConfirmDialog
+          open={rebootConfirmOpen}
+          title="确认重启设备"
+          content="重启期间设备将断开连接，确定继续？"
+          confirmText="确认重启"
+          confirmColor="error"
+          loading={rebooting}
+          onConfirm={handleRebootConfirm}
+          onCancel={() => setRebootConfirmOpen(false)}
+        />
+
+        <ErrorSnackbar error={rebootError} onClose={() => setRebootError(null)} />
+        <Snackbar
+          open={!!rebootSuccess}
+          autoHideDuration={5000}
+          onClose={() => setRebootSuccess(null)}
+          anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        >
+          <Alert severity="success" variant="filled" onClose={() => setRebootSuccess(null)}>
+            {rebootSuccess}
+          </Alert>
+        </Snackbar>
       </Toolbar>
     </AppBar>
   )

@@ -52,11 +52,14 @@ import {
   Security,
 } from '@mui/icons-material'
 import { api, suppressUnauthorizedRedirect } from '../api'
+import ConfirmDialog from '../components/ConfirmDialog'
 import ErrorSnackbar from '../components/ErrorSnackbar'
 import { useRefreshInterval } from '../contexts/RefreshContext'
 import { useAuth } from '../contexts/AuthContext'
 import type { UsbModeResponse, AirplaneModeResponse, WebhookConfig, SmsPushConfig, SmsPushProvider } from '../api/types'
 import { DEFAULT_SMS_TEMPLATE, DEFAULT_CALL_TEMPLATE, DEFAULT_SMS_PUSH_TITLE_TEMPLATE, DEFAULT_SMS_PUSH_BODY_TEMPLATE } from '../api/types'
+
+const REBOOT_DELAY_SECONDS = 3
 
 interface HealthStatus {
   status: string
@@ -181,6 +184,7 @@ export default function ConfigurationPage() {
   const [usbModePermanent, setUsbModePermanent] = useState<boolean>(false)
   const [useHotSwitch, setUseHotSwitch] = useState<boolean>(false)
   const [rebooting, setRebooting] = useState(false)
+  const [rebootConfirmOpen, setRebootConfirmOpen] = useState(false)
   const [hotSwitching, setHotSwitching] = useState(false)
   
   // 飞行模式状态
@@ -381,6 +385,10 @@ export default function ConfigurationPage() {
   }
 
   const handleReboot = () => {
+    setRebootConfirmOpen(true)
+  }
+
+  const handleRebootConfirm = () => {
     void rebootSystem()
   }
 
@@ -389,10 +397,12 @@ export default function ConfigurationPage() {
       setError(null)
       setSuccess(null)
       setRebooting(true)
-      await api.systemReboot(3)
-      setSuccess('系统将在 3 秒后重启...')
+      await api.systemReboot(REBOOT_DELAY_SECONDS)
+      setRebootConfirmOpen(false)
+      setSuccess(`系统将在 ${REBOOT_DELAY_SECONDS} 秒后重启...`)
     } catch (err) {
       setRebooting(false)
+      setRebootConfirmOpen(false)
       setError(err instanceof Error ? err.message : String(err))
     }
   }
@@ -677,6 +687,17 @@ export default function ConfigurationPage() {
       </Box>
 
       {/* 错误和成功提示 Snackbar */}
+      <ConfirmDialog
+        open={rebootConfirmOpen}
+        title="确认重启设备"
+        content="重启期间设备将断开连接，确定继续？"
+        confirmText="确认重启"
+        confirmColor="error"
+        loading={rebooting}
+        onConfirm={handleRebootConfirm}
+        onCancel={() => setRebootConfirmOpen(false)}
+      />
+
       <ErrorSnackbar error={error} onClose={() => setError(null)} />
       {success && (
         <Snackbar

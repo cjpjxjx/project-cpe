@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -19,6 +19,23 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // 移动端键盘弹出只缩小视觉视口，布局视口不变，100vh 的容器仍按整屏居中，
+  // 卡片会落进被键盘遮住的下半屏。容器改为跟随视觉视口定位与收缩，键盘一动就居中到可见区
+  const [viewport, setViewport] = useState<{ height: number; offsetTop: number } | null>(null)
+
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const sync = () => setViewport({ height: vv.height, offsetTop: vv.offsetTop })
+    sync()
+    vv.addEventListener('resize', sync)
+    vv.addEventListener('scroll', sync)
+    return () => {
+      vv.removeEventListener('resize', sync)
+      vv.removeEventListener('scroll', sync)
+    }
+  }, [])
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -52,22 +69,19 @@ export default function Login() {
   return (
     <Box
       sx={{
-        // 键盘弹出时 100vh 不变，卡片仍按整屏居中，在小屏上正好落进被键盘
-        // 遮住的下半屏。dvh 会跟随可见区收缩（配合 index.html 的
-        // interactive-widget=resizes-content），窄屏再改为顶部对齐兜底
-        minHeight: '100vh',
-        '@supports (min-height: 100dvh)': {
-          minHeight: '100dvh',
-        },
+        position: 'fixed',
+        left: 0,
+        right: 0,
+        top: viewport ? `${viewport.offsetTop}px` : 0,
+        height: viewport ? `${viewport.height}px` : '100vh',
         display: 'flex',
-        alignItems: { xs: 'flex-start', sm: 'center' },
-        justifyContent: 'center',
+        overflowY: 'auto',
         bgcolor: 'background.default',
         p: 2,
-        py: { xs: 4, sm: 2 },
       }}
     >
-      <Card sx={{ maxWidth: 380, width: '100%' }}>
+      {/* m: auto 而非 alignItems: center：卡片高于可见区时不裁掉顶部 */}
+      <Card sx={{ maxWidth: 380, width: '100%', m: 'auto' }}>
         <CardContent sx={{ p: 4 }}>
           <Box display="flex" flexDirection="column" alignItems="center" mb={3}>
             <Typography
