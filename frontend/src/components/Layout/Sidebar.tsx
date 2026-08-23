@@ -118,7 +118,18 @@ export default function Sidebar({ drawerWidth, mobileOpen, desktopOpen, onClose,
           </Typography>
         </Link>
         <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
-          v{__APP_VERSION__} ({__GIT_BRANCH__}/{__GIT_COMMIT__})
+          v{__APP_VERSION__} (
+          <Link
+            href={`https://github.com/cjpjxjx/project-cpe/tree/${__GIT_BRANCH__}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            underline="none"
+            color="inherit"
+            sx={{ '&:hover': { color: 'primary.main' } }}
+          >
+            {__GIT_BRANCH__}/{__GIT_COMMIT__}
+          </Link>
+          )
         </Typography>
         <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.5 }}>
           Copyright 2025 1orz
