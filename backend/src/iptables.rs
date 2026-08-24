@@ -76,12 +76,19 @@ pub async fn get_iptables_rule_count() -> Result<IptablesRuleCount, String> {
     .map_err(|e| format!("Task execution failed: {}", e))?
 }
 
-/// 判断一条 `iptables -S` 输出行是否是本程序维护的 ttyd 端口保护规则
+/// 判断一条 `iptables -S` 输出行是否是本程序维护的端口保护规则（ttyd 及
+/// `VENDOR_DEBUG_PORTS`）
 ///
 /// 只认端口与动作：`-S` 会补上 `-m tcp` 等匹配器，接口取反的写法也随
 /// iptables 版本而异，匹配 `-i` 部分容易漏判。
 fn is_managed_rule(rule: &str) -> bool {
-    rule.contains(&format!("--dport {}", TTYD_PORT)) && rule.contains("-j DROP")
+    if !rule.contains("-j DROP") {
+        return false;
+    }
+    rule.contains(&format!("--dport {}", TTYD_PORT))
+        || VENDOR_DEBUG_PORTS
+            .iter()
+            .any(|port| rule.contains(&format!("--dport {}", port)))
 }
 
 /// 清空所有 iptables 规则
@@ -98,8 +105,8 @@ fn is_managed_rule(rule: &str) -> bool {
 /// - FORWARD 链
 /// - OUTPUT 链
 ///
-/// 清空后会立即补回 ttyd 端口保护规则（见 `ensure_ttyd_port_protected`），
-/// 该规则是安全不变量而非网络配置，不应被「恢复干净网络状态」的操作带走。
+/// 清空后会立即补回 ttyd 及 `VENDOR_DEBUG_PORTS` 的端口保护规则，
+/// 这些规则是安全不变量而非网络配置，不应被「恢复干净网络状态」的操作带走。
 pub async fn flush_iptables() -> Result<(), String> {
     let result = task::spawn_blocking(|| {
         // 清空 filter 表的所有规则
@@ -126,6 +133,7 @@ pub async fn flush_iptables() -> Result<(), String> {
     .map_err(|e| format!("Task execution failed: {}", e))?;
 
     ensure_ttyd_port_protected().await;
+    ensure_vendor_debug_ports_protected().await;
 
     result
 }
@@ -133,58 +141,77 @@ pub async fn flush_iptables() -> Result<(), String> {
 /// ttyd 监听端口
 const TTYD_PORT: u16 = crate::terminal_proxy::TTYD_PORT;
 
+/// 展锐 UDX710 原厂固件自带、无鉴权监听的工程调试端口：adbd（TCP，5555）、
+/// remote_mgr（8002-8004/8006）、engpc（10056/10057）。安全审查确认这些端口
+/// 仅靠「网络不可达」作为唯一防线，局域网内可路由到就能直接拿到 root shell，
+/// 与 ttyd 同等对待，不因「厂商自带、非本项目组件」而排除在防护之外。
+const VENDOR_DEBUG_PORTS: [u16; 7] = [5555, 8002, 8003, 8004, 8006, 10056, 10057];
+
 /// 确保存在「丢弃非回环接口发往 ttyd 端口的流量」的 INPUT 规则
 ///
 /// 与写入 ttyd 启动脚本的 `-i lo` 互为兜底：外部 start.sh 格式无法识别时参数注入
 /// 会静默跳过，这条规则仍能挡住来自局域网的直连。规则已存在时不重复插入；失败只记
 /// 日志不影响主流程（设备可能没有 iptables 或缺少相应内核模块）。
 pub async fn ensure_ttyd_port_protected() {
-    let result = task::spawn_blocking(|| {
-        let port = TTYD_PORT.to_string();
-        let args = [
-            "INPUT",
-            "!",
-            "-i",
-            "lo",
-            "-p",
-            "tcp",
-            "--dport",
-            port.as_str(),
-            "-j",
-            "DROP",
-        ];
+    ensure_ports_protected(&[TTYD_PORT]).await;
+}
 
-        for binary in ["iptables", "ip6tables"] {
-            // -C 查询规则是否已存在；不支持 -C 的实现返回非零，此时直接插入
-            let exists = Command::new(binary)
-                .arg("-C")
-                .args(args)
-                .output()
-                .is_ok_and(|output| output.status.success());
+/// 确保 `VENDOR_DEBUG_PORTS` 同样仅允许经回环访问，语义与 `ensure_ttyd_port_protected`
+/// 一致
+pub async fn ensure_vendor_debug_ports_protected() {
+    ensure_ports_protected(&VENDOR_DEBUG_PORTS).await;
+}
 
-            if exists {
-                continue;
-            }
+/// 对给定的一组 TCP 端口分别插入「丢弃非回环接口流量」的 INPUT 规则（IPv4 + IPv6）
+async fn ensure_ports_protected(ports: &[u16]) {
+    for &port in ports {
+        let result = task::spawn_blocking(move || protect_tcp_port(port)).await;
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => warn!(error = %e, port, "Failed to protect port"),
+            Err(e) => warn!(error = %e, port, "port protection task panicked"),
+        }
+    }
+}
 
-            match Command::new(binary).arg("-I").args(args).output() {
-                Ok(output) if output.status.success() => {}
-                Ok(output) => {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(format!("{} -I INPUT failed: {}", binary, stderr.trim()));
-                }
-                Err(e) => return Err(format!("Failed to execute {}: {}", binary, e)),
-            }
+fn protect_tcp_port(port: u16) -> Result<(), String> {
+    let port = port.to_string();
+    let args = [
+        "INPUT",
+        "!",
+        "-i",
+        "lo",
+        "-p",
+        "tcp",
+        "--dport",
+        port.as_str(),
+        "-j",
+        "DROP",
+    ];
+
+    for binary in ["iptables", "ip6tables"] {
+        // -C 查询规则是否已存在；不支持 -C 的实现返回非零，此时直接插入
+        let exists = Command::new(binary)
+            .arg("-C")
+            .args(args)
+            .output()
+            .is_ok_and(|output| output.status.success());
+
+        if exists {
+            continue;
         }
 
-        Ok(())
-    })
-    .await;
-
-    match result {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => warn!(error = %e, port = TTYD_PORT, "Failed to protect ttyd port"),
-        Err(e) => warn!(error = %e, "ttyd port protection task panicked"),
+        match Command::new(binary).arg("-I").args(args).output() {
+            Ok(output) if output.status.success() => {}
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("{} -I INPUT failed: {}", binary, stderr.trim()));
+            }
+            Err(e) => return Err(format!("Failed to execute {}: {}", binary, e)),
+        }
     }
+
+    Ok(())
 }
 
 /// 清空所有 iptables 规则（包括 nat 和 mangle 表）

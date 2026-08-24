@@ -302,6 +302,9 @@ async fn main() -> Result<()> {
     // 校准 ttyd：确保 start.sh 带有代理参数，且运行中的实例已是代理模式
     tokio::spawn(terminal_proxy::ensure_ttyd_proxy_runtime());
 
+    // 原厂固件自带的 adbd/engpc/remote_mgr 调试端口无鉴权，仅允许经回环访问
+    tokio::spawn(iptables::ensure_vendor_debug_ports_protected());
+
     // CORS 配置：允许前端开发服务器跨域访问
     let cors = CorsLayer::new()
         .allow_origin(Any)

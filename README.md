@@ -349,22 +349,27 @@ UDX710 双核 Cortex-A55 上，Linux 默认将 5G 数据接收中断 `sipa`（IR
 
 ### 优化方案
 
-两步操作：**IRQ 亲和性分离** + **RPS 软中断分散**。
+四步操作：**IRQ 亲和性分离** + **RPS 软中断分散** + **XPS 发包 CPU 分散** + **收包队列上限扩容**。
 
 ```bash
 # 1) 将 xhci USB 中断（IRQ 97）迁移到 CPU1
 #    注意：IRQ 编号以实际设备 /proc/interrupts 为准
 echo 2 > /proc/irq/97/smp_affinity
 
-# 2) 启用 RPS，将收包软中断分散到两个核心
+# 2) 启用 RPS，将收包软中断分散到两个核心；启用 XPS，让发包 CPU 选择同样双核分散
 for d in sipa_eth0 usb0; do
   for q in /sys/class/net/$d/queues/rx-*/rps_cpus; do
     echo 3 > "$q"
   done
+  for q in /sys/class/net/$d/queues/tx-*/xps_cpus; do
+    echo 3 > "$q"
+  done
 done
 
-# 3) 扩大 RPS 流表
+# 3) 扩大 RPS 流表、收包队列上限与单次软中断处理配额
 echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
+echo 2000 > /proc/sys/net/core/netdev_max_backlog
+echo 600 > /proc/sys/net/core/netdev_budget
 ```
 
 ### 持久化：写入项目 init.sh（推荐）
@@ -376,28 +381,37 @@ echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
 
 ```bash
 # === UDX710 网络性能调优 ===
+# logger 默认发 notice 级别，设备 syslogd 会过滤掉，须加 -p user.warning 才会落盘
 tune_net() {
-  # 动态查找 xhci 中断号，迁移到 CPU1
   xhci_irq=$(awk '/xhci/ {print $1}' /proc/interrupts | tr -d ':')
-  if [ -n "$xhci_irq" ] && [ -w "/proc/irq/$xhci_irq/smp_affinity" ]; then
-    echo 2 > "/proc/irq/$xhci_irq/smp_affinity"
-  fi
+  [ -n "$xhci_irq" ] && [ -w "/proc/irq/$xhci_irq/smp_affinity" ] && [ "$(cat "/proc/irq/$xhci_irq/smp_affinity" 2>/dev/null)" != "2" ] && { echo 2 > "/proc/irq/$xhci_irq/smp_affinity"; logger -p user.warning -t udx710-tune "xhci irq $xhci_irq affinity -> CPU1"; }
 
-  # RPS: 收包软中断分散到双核，并设置每队列流表
+  # RPS 收包、XPS 发包分散到双核
   for d in sipa_eth0 usb0; do
     for q in /sys/class/net/$d/queues/rx-*; do
-      [ -w "$q/rps_cpus" ] && echo 3 > "$q/rps_cpus"
-      [ -w "$q/rps_flow_cnt" ] && echo 4096 > "$q/rps_flow_cnt"
+      [ -w "$q/rps_cpus" ] && [ "$(cat "$q/rps_cpus" 2>/dev/null)" != "3" ] && { echo 3 > "$q/rps_cpus"; logger -p user.warning -t udx710-tune "$d $(basename "$q") rps_cpus -> 3"; }
+      [ -w "$q/rps_flow_cnt" ] && [ "$(cat "$q/rps_flow_cnt" 2>/dev/null)" != "4096" ] && { echo 4096 > "$q/rps_flow_cnt"; logger -p user.warning -t udx710-tune "$d $(basename "$q") rps_flow_cnt -> 4096"; }
+    done
+    for q in /sys/class/net/$d/queues/tx-*; do
+      [ -w "$q/xps_cpus" ] && [ "$(cat "$q/xps_cpus" 2>/dev/null)" != "3" ] && { echo 3 > "$q/xps_cpus"; logger -p user.warning -t udx710-tune "$d $(basename "$q") xps_cpus -> 3"; }
     done
   done
 
-  # 扩大全局 RPS 流表
-  [ -w /proc/sys/net/core/rps_sock_flow_entries ] && \
-    echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
+  for kv in "/proc/sys/net/core/rps_sock_flow_entries:32768" "/proc/sys/net/core/netdev_max_backlog:2000" "/proc/sys/net/core/netdev_budget:600"; do
+    f="${kv%%:*}"; want="${kv##*:}"
+    [ -w "$f" ] && [ "$(cat "$f" 2>/dev/null)" != "$want" ] && { echo "$want" > "$f"; logger -p user.warning -t udx710-tune "$f -> $want"; }
+  done
 }
 
-# 延迟执行，等待网卡就绪；重试一次以防首次过早
-( sleep 3; tune_net; sleep 5; tune_net ) &
+# 每 60 秒巡检一次，应对 usb0 重新枚举导致 sysfs 节点被内核重建、
+# 调优悄悄失效的情况；实测单次耗时约 0.1s，可忽略不计
+(
+  sleep 3
+  while true; do
+    tune_net
+    sleep 60
+  done
+) &
 ```
 
 3. 点击「**保存**」即可，下次开机自动生效。
@@ -412,11 +426,19 @@ tune_net() {
 # 检查 IRQ 97 是否分散到 CPU1（CPU1 列应开始递增）
 cat /proc/interrupts | grep -E "22:|97:"
 
-# 检查软中断分布（NET_RX 行应双核均衡）
-cat /proc/softirqs | grep NET_RX
+# 检查软中断分布（NET_RX/NET_TX 行应双核均衡）
+cat /proc/softirqs | grep -E "NET_RX|NET_TX"
 
 # 观察负载变化
 uptime
+
+# 确认后台巡检持续在跑，且近期确有生效（重新枚举后应看到新的 -> 记录）；
+# 若长期无输出属正常（值未漂移，巡检判断无需重新写入，不代表脚本未运行）。
+# 部分固件 logread 读不到 syslogd 内存缓冲区（"can't find syslogd buffer"
+# 报错），此时改查 syslogd 实际落盘位置（以 `ps | grep syslogd` 里 -O 参数
+# 为准，常见路径 /mnt/data/yocto.log）
+logread | grep udx710-tune | tail -20
+grep udx710-tune /mnt/data/yocto.log | tail -20
 ```
 
 参考实测数据（中国联通 5G NR n78，100 MHz 单载波，SINR ~10 dB）：
@@ -428,6 +450,25 @@ uptime
 | NET_RX 分布 | CPU0 82% / CPU1 18% | CPU0 32% / CPU1 68% |
 
 > ⚠️ 实际效果因信号环境、基站负载、运营商等因素而异，以上数据仅供参考。
+
+---
+
+## ⚠️ 已知问题（UDX710 平台）
+
+### CDC-NCM 模式下 usb0 网络间歇性发送冻结
+
+USB 模式设为 NCM 时，`usb0` 接口开机运行一段时间（通常一分钟左右）后会出现网络不可达：ARP 无响应、ping 不通，但 ADB（走独立的 USB gadget 功能，不依赖 usb0）仍可正常连接。
+
+现场诊断确认的现象与结论：
+
+- `usb0` 收包（RX）正常，持续有流量进来；发包（TX）完全停滞，`/proc/net/dev` 的 TX 计数器冻结不再增长，且不产生任何 err/drop 计数——是发送队列被卡住，不是物理链路、iptables 或路由问题。
+- 执行 `ip link set usb0 down && ip link set usb0 up` 可立即恢复连通，但一段时间后会再次卡死，说明是可逆的软件/驱动状态问题，不是硬件损坏。
+- 设备内核日志（`dmesg`）中有一个与故障时机吻合的周期性循环（约一分钟一次）：`sipa_rm`（展锐 IPA 硬件资源管理器）反复出现 `SIPA_RM_RES_PROD_IPA` / `SIPA_RM_RES_CONS_WWAN_UL` / `SIPA_RM_RES_CONS_WWAN_DL` 状态切换和 `SIPA LEAVE FLOWCTRL`。
+- 已排除本项目代码导致：停止 `udx710` 后端进程（含其 `data_connection_watchdog`）后，上述周期仍照常发生，确认是展锐基带/RIL 固件自身的行为，不是应用层触发的。
+- 结合 UDX710 内核源码（[strongtz/linux-sprd](https://github.com/strongtz/linux-sprd) 的 `drivers/staging/sprd/sipa/sipa_usb_cons.c`）分析，`usb0` 作为 IPA 资源管理器的 `SIPA_RM_RES_CONS_USB` 消费者注册，其资源释放事件（`SIPA_RM_EVT_RELEASED`）回调是空实现；硬件加速通道与 CPU 发送路径之间的交接缺陷是比较可能的方向，但未在闭源驱动二进制层面进一步定位。
+- 临时关闭 SFP 硬件转发加速（`/proc/net/sfp/enable`）只能推迟故障出现的时间（约从一分钟延长到一分半），不能根治，说明单靠关闭 SFP 不足以避开问题。
+
+目前没有可在应用层（本项目代码）根治的方案，这是设备固件/闭源内核驱动层面的问题。恩山无线论坛「4G 5G CPE」板块有用户反馈过同类「切换 USB 模式后 SIPA 通道不通、ADB/网络失联」的现象，也有反馈 RNDIS 模式相较 NCM/ECM 更稳定，可作为规避思路，但未经本项目验证。
 
 ---
 
