@@ -302,8 +302,10 @@ async fn main() -> Result<()> {
     // 校准 ttyd：确保 start.sh 带有代理参数，且运行中的实例已是代理模式
     tokio::spawn(terminal_proxy::ensure_ttyd_proxy_runtime());
 
-    // 原厂固件自带的 adbd/engpc/remote_mgr 调试端口无鉴权，仅允许经回环访问
-    tokio::spawn(iptables::ensure_vendor_debug_ports_protected());
+    // 原厂固件自带的 adbd/engpc/remote_mgr 调试端口无鉴权，按配置决定是否仅允许经回环访问
+    if config_manager.get_security().vendor_debug_port_protection {
+        tokio::spawn(iptables::ensure_vendor_debug_ports_protected());
+    }
 
     // CORS 配置：允许前端开发服务器跨域访问
     let cors = CorsLayer::new()
@@ -393,6 +395,8 @@ async fn main() -> Result<()> {
         .route("/api/auth/login", post(post_login).options(options_handler))
         .route("/api/auth/logout", post(post_logout).options(options_handler))
         .route("/api/auth/config", get(get_auth_config).post(post_auth_config).options(options_handler))
+        // ========== 安全防护配置接口 ==========
+        .route("/api/security/config", get(get_security_config_handler).post(set_security_config_handler).options(options_handler))
         // ========== Web 终端（ttyd）反向代理 ==========
         // 注入 ttyd 信任的认证头，访问控制由上面的鉴权中间件统一负责
         //

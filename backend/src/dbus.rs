@@ -752,7 +752,7 @@ pub async fn data_connection_watchdog(
             Ok(count) => {
                 if count.has_rules() {
                     // 有规则，执行清空
-                    if let Err(e) = flush_iptables().await {
+                    if let Err(e) = flush_iptables(&config_manager).await {
                         warn!(error = %e, "Watchdog: iptables flush failed");
                     } else {
                         if !last_iptables_action {

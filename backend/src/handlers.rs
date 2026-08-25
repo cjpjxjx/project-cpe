@@ -30,7 +30,7 @@ use crate::{
         get_sim_info_data, send_at_command, set_airplane_mode, set_apn_properties, set_data_connection,
         set_radio_mode, set_roaming_allowed,
     },
-    iptables::flush_iptables,
+    iptables::{ensure_vendor_debug_ports_protected, flush_iptables, remove_vendor_debug_ports_protection},
     models::*,
     usb_switch,
     utils::{
@@ -237,10 +237,11 @@ pub async fn get_device_info(State(conn): State<Arc<Connection>>) -> impl IntoRe
 /// 以确保网络配置处于干净状态
 pub async fn set_data_status(
     State(conn): State<Arc<Connection>>,
+    State(config_manager): State<Arc<ConfigManager>>,
     Json(payload): Json<DataConnectionRequest>,
 ) -> impl IntoResponse {
     // 1. 先清空 iptables 规则
-    if let Err(_e) = flush_iptables().await {
+    if let Err(_e) = flush_iptables(&config_manager).await {
         // 清空规则失败不应阻止数据连接操作，静默处理
     }
 
@@ -2934,6 +2935,49 @@ pub async fn post_auth_config(
             StatusCode::OK,
             Json(ApiResponse::success_with_message("鉴权配置已保存", ())),
         ),
+        Err(e) => (
+            StatusCode::OK,
+            Json(ApiResponse::error(format!("保存失败: {}", e))),
+        ),
+    }
+}
+
+// ============ 安全防护配置 API ============
+
+/// GET /api/security/config - 获取安全防护配置（调试端口保护开关）
+pub async fn get_security_config_handler(
+    State(config_manager): State<Arc<ConfigManager>>,
+) -> (StatusCode, Json<ApiResponse<crate::config::SecurityConfig>>) {
+    let config = config_manager.get_security();
+    (
+        StatusCode::OK,
+        Json(ApiResponse::success_with_message("Success", config)),
+    )
+}
+
+/// POST /api/security/config - 设置安全防护配置
+///
+/// 切换后立即生效：开启时补插 iptables 规则，关闭时立即撤销，不必等待下一次
+/// `flush_iptables()`。ttyd 端口保护不受此配置影响，始终强制开启。
+pub async fn set_security_config_handler(
+    State(config_manager): State<Arc<ConfigManager>>,
+    Json(security_config): Json<crate::config::SecurityConfig>,
+) -> (StatusCode, Json<ApiResponse<crate::config::SecurityConfig>>) {
+    let previous = config_manager.get_security();
+
+    match config_manager.set_security(security_config.clone()) {
+        Ok(_) => {
+            if security_config.vendor_debug_port_protection && !previous.vendor_debug_port_protection {
+                ensure_vendor_debug_ports_protected().await;
+            } else if !security_config.vendor_debug_port_protection && previous.vendor_debug_port_protection {
+                remove_vendor_debug_ports_protection().await;
+            }
+
+            (
+                StatusCode::OK,
+                Json(ApiResponse::success_with_message("安全防护配置已保存", security_config)),
+            )
+        }
         Err(e) => (
             StatusCode::OK,
             Json(ApiResponse::error(format!("保存失败: {}", e))),

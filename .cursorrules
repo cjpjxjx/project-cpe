@@ -69,6 +69,9 @@ context_proxy.call_method("SetProperty", &("Active", false))?;
 - 每次切换数据连接状态时，会自动清空 iptables 规则（`iptables -F`）
 - 这确保网络配置始终处于干净状态，避免旧规则干扰
 - iptables 清空操作失败不会阻止数据连接的切换，只会记录警告日志
+- 清空后会自动补回 ttyd 端口保护规则（强制）；原厂调试端口保护规则是否补回取决于
+  `/api/security/config` 的开关（默认开启），关闭时清空后不再补回，`flush_iptables()`
+  因此需要 `&ConfigManager` 参数
 
 ### NetworkRegistration 接口
 - `Status` (string) - 注册状态

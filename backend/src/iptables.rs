@@ -16,6 +16,8 @@ use std::process::Command;
 use tokio::task;
 use tracing::warn;
 
+use crate::config::ConfigManager;
+
 /// iptables 规则统计信息
 #[derive(Debug, Default)]
 pub struct IptablesRuleCount {
@@ -105,9 +107,11 @@ fn is_managed_rule(rule: &str) -> bool {
 /// - FORWARD 链
 /// - OUTPUT 链
 ///
-/// 清空后会立即补回 ttyd 及 `VENDOR_DEBUG_PORTS` 的端口保护规则，
-/// 这些规则是安全不变量而非网络配置，不应被「恢复干净网络状态」的操作带走。
-pub async fn flush_iptables() -> Result<(), String> {
+/// 清空后会立即补回 ttyd 端口保护规则（安全不变量，不受配置影响），
+/// 并按 `SecurityConfig::vendor_debug_port_protection` 决定是否补回
+/// `VENDOR_DEBUG_PORTS` 保护——这两类规则不应被「恢复干净网络状态」的操作
+/// 无差别带走。
+pub async fn flush_iptables(config_manager: &ConfigManager) -> Result<(), String> {
     let result = task::spawn_blocking(|| {
         // 清空 filter 表的所有规则
         let outputv4 = Command::new("iptables")
@@ -133,7 +137,9 @@ pub async fn flush_iptables() -> Result<(), String> {
     .map_err(|e| format!("Task execution failed: {}", e))?;
 
     ensure_ttyd_port_protected().await;
-    ensure_vendor_debug_ports_protected().await;
+    if config_manager.get_security().vendor_debug_port_protection {
+        ensure_vendor_debug_ports_protected().await;
+    }
 
     result
 }
@@ -157,9 +163,15 @@ pub async fn ensure_ttyd_port_protected() {
 }
 
 /// 确保 `VENDOR_DEBUG_PORTS` 同样仅允许经回环访问，语义与 `ensure_ttyd_port_protected`
-/// 一致
+/// 一致；是否调用由 `SecurityConfig::vendor_debug_port_protection` 配置决定
 pub async fn ensure_vendor_debug_ports_protected() {
     ensure_ports_protected(&VENDOR_DEBUG_PORTS).await;
+}
+
+/// 撤销 `VENDOR_DEBUG_PORTS` 的端口保护规则，用于用户在后台关闭该开关时立即生效，
+/// 不必等到下一次 `flush_iptables()`
+pub async fn remove_vendor_debug_ports_protection() {
+    remove_ports_protected(&VENDOR_DEBUG_PORTS).await;
 }
 
 /// 对给定的一组 TCP 端口分别插入「丢弃非回环接口流量」的 INPUT 规则（IPv4 + IPv6）
@@ -214,6 +226,46 @@ fn protect_tcp_port(port: u16) -> Result<(), String> {
     Ok(())
 }
 
+/// 对给定的一组 TCP 端口分别撤销 `protect_tcp_port` 插入的 INPUT 规则（IPv4 + IPv6）
+async fn remove_ports_protected(ports: &[u16]) {
+    for &port in ports {
+        let result = task::spawn_blocking(move || unprotect_tcp_port(port)).await;
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => warn!(error = %e, port, "Failed to remove port protection"),
+            Err(e) => warn!(error = %e, port, "port unprotection task panicked"),
+        }
+    }
+}
+
+/// 撤销 `protect_tcp_port` 插入的规则；规则不存在（未曾插入过、或已被移除）时
+/// `-D` 返回非零，视为已达到目标状态，不报错
+fn unprotect_tcp_port(port: u16) -> Result<(), String> {
+    let port = port.to_string();
+    let args = [
+        "INPUT",
+        "!",
+        "-i",
+        "lo",
+        "-p",
+        "tcp",
+        "--dport",
+        port.as_str(),
+        "-j",
+        "DROP",
+    ];
+
+    for binary in ["iptables", "ip6tables"] {
+        match Command::new(binary).arg("-D").args(args).output() {
+            Ok(output) if output.status.success() => {}
+            Ok(_) => {} // 规则本就不存在，已是目标状态
+            Err(e) => return Err(format!("Failed to execute {}: {}", binary, e)),
+        }
+    }
+
+    Ok(())
+}
+
 /// 清空所有 iptables 规则（包括 nat 和 mangle 表）
 ///
 /// 执行更完整的清空操作，清空 filter、nat、mangle 表的所有规则
@@ -253,7 +305,8 @@ mod tests {
     #[tokio::test]
     #[ignore] // 需要 root 权限，默认忽略
     async fn test_flush_iptables() {
-        let result = flush_iptables().await;
+        let config_manager = ConfigManager::new(std::env::temp_dir().join("udx710_test_config.json"));
+        let result = flush_iptables(&config_manager).await;
         assert!(result.is_ok());
     }
 }

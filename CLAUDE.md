@@ -52,7 +52,7 @@
 
 4. **【MUST】ttyd 必须绑定回环、只能经后端反代访问** —— ttyd 用 `-H X-Remote-User` 做"鉴权"，但该请求头的值可被客户端任意伪造，唯一的安全边界是网络层面：ttyd 只监听 `127.0.0.1`，局域网请求物理上到不了它。任何改动都不能让 ttyd 监听非回环地址，否则局域网内任何人都能拿到设备 root shell。相关校验/自愈逻辑见 [terminal_proxy.rs](backend/src/terminal_proxy.rs) 的 `ensure_ttyd_proxy_runtime`。
 
-5. **【MUST】数据连接切换清空 iptables 规则后必须补回端口保护规则** —— `/api/data` 切换时执行的 `iptables -F`（[iptables.rs](backend/src/iptables.rs)）会清掉包括第 4 条防护规则在内的所有规则；`flush_iptables()` 因此在清空后自动调用 `ensure_ttyd_port_protected()` 与 `ensure_vendor_debug_ports_protected()` 补回。后者防护的是展锐原厂固件自带、无鉴权监听的工程调试端口（`VENDOR_DEBUG_PORTS`：adbd TCP 5555、remote_mgr 8002-8004/8006、engpc 10056/10057）——安全审查确认这些端口仅靠"网络不可达"作为唯一防线，局域网内可路由到就能直接拿到 root shell。这些规则是安全不变量，不是可被"恢复干净网络状态"带走的普通网络配置，新增任何清空/重置 iptables 的地方都要照此处理。
+5. **【MUST】数据连接切换清空 iptables 规则后必须补回端口保护规则** —— `/api/data` 切换时执行的 `iptables -F`（[iptables.rs](backend/src/iptables.rs)）会清掉包括第 4 条防护规则在内的所有规则；`flush_iptables()` 因此在清空后自动调用 `ensure_ttyd_port_protected()`（始终执行，安全不变量）与 `ensure_vendor_debug_ports_protected()`（仅当 `SecurityConfig::vendor_debug_port_protection` 为 `true` 时执行）补回。后者防护的是展锐原厂固件自带、无鉴权监听的工程调试端口（`VENDOR_DEBUG_PORTS`：adbd TCP 5555、remote_mgr 8002-8004/8006、engpc 10056/10057）——安全审查确认这些端口仅靠"网络不可达"作为唯一防线，局域网内可路由到就能直接拿到 root shell；该防护默认开启，可在 Web「系统配置」页（`/api/security/config`）关闭，关闭后 `remove_vendor_debug_ports_protection()` 会立即撤销已插入的规则，不必等待下一次 flush。ttyd 端口保护不提供关闭入口，任何改动都不能让它变成可选项（见第 4 条）。这些规则是安全不变量或按用户主动选择关闭的防护，不是可被"恢复干净网络状态"无差别带走的普通网络配置，新增任何清空/重置 iptables 的地方都要照此处理，且 `flush_iptables()` 现在需要 `&ConfigManager` 参数以读取该配置。
 
 6. **【MUST】新增系统指标优先扩展 `/api/stats`，不轻易新建端点** —— 新字段加入 `SystemStatsResponse`（[models.rs](backend/src/models.rs)，已含网速/内存/磁盘/CPU/温度/运行时间/USB 模式），减少前端请求数与并发 D-Bus 冲突。仅当数据量特别大（如日志）、需要独立刷新频率、或属于完全独立功能域（如 `/api/location/cell-info`）时才新建端点。
 
@@ -107,7 +107,7 @@ README.md、CLAUDE.md 及代码注释遵守：
 - **[sms_listener.rs](backend/src/sms_listener.rs)** —— D-Bus 信号监听（`start_sms_listener`/`start_call_listener`），短信/通话事件写入数据库并触发 webhook/短信推送。
 - **[sms_push.rs](backend/src/sms_push.rs)** —— 第三方短信转发推送发送器。
 - **[webhook.rs](backend/src/webhook.rs)** —— Webhook 配置与发送（HMAC 签名基于 `secret`）。
-- **[iptables.rs](backend/src/iptables.rs)** —— 规则计数/清空（`flush_iptables`，附带自动补回 ttyd 端口保护规则）、`ensure_ttyd_port_protected()`。
+- **[iptables.rs](backend/src/iptables.rs)** —— 规则计数/清空（`flush_iptables`，接收 `&ConfigManager`，附带自动补回 ttyd 端口保护规则与按需补回/撤销原厂调试端口保护规则）、`ensure_ttyd_port_protected()`。
 - **[auth.rs](backend/src/auth.rs)** —— 密码哈希（Argon2）、session 生成/校验/续期、登录限流、CSPRNG 预热、全局鉴权中间件 `auth_middleware`。改鉴权相关逻辑看这里，详见"运行时架构与原理 → 鉴权与终端代理安全模型"。
 - **[terminal_proxy.rs](backend/src/terminal_proxy.rs)** —— ttyd 反向代理（HTTP + WebSocket 隧道）、ttyd 运行状态探测与自愈重启（`ensure_ttyd_proxy_runtime`/`restart_ttyd_verified`）。
 - **[serial.rs](backend/src/serial.rs)** —— 全局 `with_serial()` 互斥锁（见"核心设计原则"第 1 条）。
@@ -172,6 +172,7 @@ README.md、CLAUDE.md 及代码注释遵守：
 - **密码**：Argon2id 哈希；新哈希使用调轻的参数（8 MiB / 1 轮，而非 RFC 9106 默认的 19 MiB / 2 轮），因为设备要与 `ofonod`/`sprdrild` 抢 CPU，默认参数单次校验可能耗时数十秒——校验时用的是哈希串内嵌的历史参数，旧密码需重设一次才会换成轻量参数。密码规则：8~128 位可见 ASCII（不含空格）。
 - **登录接口防护**：全局并发闸（同时最多 2 个登录请求，超出直接拒绝不排队，防止 Argon2 内存占用被打爆）；按来源 IP 计数，10 分钟内失败 10 次即锁定 10 分钟；密码比较用常数时间比较，响应固定最小延迟 300ms，两者共同抹平时序侧信道。
 - **ttyd Web 终端信任模型**：ttyd 自身不做鉴权，仅要求请求带有 `X-Remote-User` 头（值可被客户端任意设置），因此**必须**绑定在 `127.0.0.1`（启动参数 `-i lo -b /api/terminal/proxy -H X-Remote-User`）、只能经后端反代访问；后端启动时校准 `start.sh` 参数并探测 ttyd 是否确实「代理模式 + 绑定回环」，不满足则重启（最多 3 次，每次等待 15 秒），同时用 iptables 插入 `-i !lo --dport 7681 -j DROP` 兜底（`flush_iptables()` 清空规则后会自动补回，见 [iptables.rs](backend/src/iptables.rs)）。WebSocket 隧道建立后不再经过 HTTP 鉴权中间件，靠后台每 30 秒轮询 session 有效性主动断开，退出登录/改密码不会立刻掐断已打开的终端。
+- **调试端口保护开关**：`/api/security/config`（GET/POST）控制是否防护 `VENDOR_DEBUG_PORTS`（见第 5 条），默认开启；关闭/开启立即生效（分别调用 `remove_vendor_debug_ports_protection()`/`ensure_vendor_debug_ports_protected()`），无需重启设备。仅影响原厂调试端口，不提供关闭 ttyd 保护的入口。前端入口在「系统配置」页「面板登录鉴权」区块下方的「调试端口保护」区块。
 - **前端**：`AuthContext`/`RequireAuth`（[AuthContext.tsx](frontend/src/contexts/AuthContext.tsx)）在登录状态未知前只渲染占位，避免未登录时业务树整棵挂载、并发打出十几个必然 401 的请求；收到 `udx710:unauthorized` 事件后用整页 `location.replace('/login')` 而非 SPA 路由跳转（会话失效没有内存状态需要保留，且能拿到 OTA 后最新的 chunk 清单）。
 - `/api/auth/*`、`/api/terminal/proxy*` 尚未纳入 `bruno-api/`（依赖 session cookie，脚本化测试成本高于其余无状态端点）。
 

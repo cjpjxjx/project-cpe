@@ -205,6 +205,27 @@ pub struct AuthConfig {
     pub password_hash: String,
 }
 
+fn default_true() -> bool {
+    true
+}
+
+/// 安全防护配置
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityConfig {
+    /// 是否防护原厂固件自带的工程调试端口（adbd/remote_mgr/engpc），
+    /// 见 `iptables::VENDOR_DEBUG_PORTS`；不影响 ttyd 端口保护，后者始终强制开启
+    #[serde(default = "default_true")]
+    pub vendor_debug_port_protection: bool,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            vendor_debug_port_protection: true,
+        }
+    }
+}
+
 /// 应用配置
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
@@ -216,6 +237,8 @@ pub struct AppConfig {
     pub refresh: RefreshConfig,
     #[serde(default)]
     pub auth: AuthConfig,
+    #[serde(default)]
+    pub security: SecurityConfig,
 }
 
 
@@ -317,6 +340,18 @@ impl ConfigManager {
         {
             let mut config = self.config.write().unwrap();
             config.auth = auth;
+        }
+        self.save()
+    }
+
+    pub fn get_security(&self) -> SecurityConfig {
+        self.config.read().unwrap().security.clone()
+    }
+
+    pub fn set_security(&self, security: SecurityConfig) -> Result<(), String> {
+        {
+            let mut config = self.config.write().unwrap();
+            config.security = security;
         }
         self.save()
     }

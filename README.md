@@ -292,6 +292,17 @@ AT+SPLBAND=2,0,0,0,0
 | `/api/webhook/config` | GET/POST | Webhook 配置管理 |
 | `/api/webhook/test` | POST | 测试 Webhook |
 
+### 安全防护配置
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/security/config` | GET/POST | 调试端口保护开关 |
+
+调试端口保护默认开启，仅允许经回环接口访问原厂固件自带的工程调试端口（adbd TCP 5555、remote_mgr
+8002-8004/8006、engpc 10056/10057），这些端口本身无鉴权。关闭后局域网内任意设备均可直接访问，仅在
+明确需要局域网调试访问时关闭。该开关不影响 Web 终端（ttyd）的访问保护，ttyd 始终仅限经本系统反向
+代理访问。
+
 ### OTA 更新
 
 | 接口 | 方法 | 说明 |

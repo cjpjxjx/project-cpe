@@ -150,6 +150,11 @@
 - **set_webhook_config.bru** - 设置 Webhook 配置
 - **test_webhook.bru** - 测试 Webhook 连接
 
+### 安全防护接口
+
+- **get_security_config.bru** - 获取安全防护配置（调试端口保护开关）
+- **set_security_config.bru** - 设置安全防护配置
+
 ## 使用方法
 
 1. **安装 Bruno**
@@ -236,6 +241,8 @@
 | GET | `/api/webhook/config` | 获取 Webhook 配置 |
 | POST | `/api/webhook/config` | 设置 Webhook 配置 |
 | POST | `/api/webhook/test` | 测试 Webhook 连接 |
+| GET | `/api/security/config` | 获取安全防护配置（调试端口保护开关） |
+| POST | `/api/security/config` | 设置安全防护配置 |
 
 ## USB 模式说明
 

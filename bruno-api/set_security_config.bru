@@ -1,0 +1,21 @@
+meta {
+  name: set_security_config
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://192.168.66.1:3000/api/security/config
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "vendor_debug_port_protection": true
+  }
+}
+
+settings {
+  encodeUrl: true
+}

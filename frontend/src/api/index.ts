@@ -77,6 +77,7 @@ import type {
   AuthStatusResponse,
   AuthConfigResponse,
   SetAuthConfigRequest,
+  SecurityConfig,
 } from './types'
 
 // API 基础配置
@@ -694,6 +695,17 @@ class UDX710API {
 
   async setAuthConfig(config: SetAuthConfigRequest) {
     return request<ApiResponse<Record<string, never>>>('/auth/config', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    })
+  }
+
+  async getSecurityConfig() {
+    return request<ApiResponse<SecurityConfig>>('/security/config')
+  }
+
+  async setSecurityConfig(config: SecurityConfig) {
+    return request<ApiResponse<SecurityConfig>>('/security/config', {
       method: 'POST',
       body: JSON.stringify(config),
     })

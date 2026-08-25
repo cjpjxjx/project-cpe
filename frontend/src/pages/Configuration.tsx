@@ -50,6 +50,7 @@ import {
   Add,
   PlayArrow,
   Security,
+  Shield,
 } from '@mui/icons-material'
 import { api, suppressUnauthorizedRedirect } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -155,7 +156,7 @@ function createDefaultSmsPushConfig(): SmsPushConfig {
 // 与后端 auth.rs 的 PASSWORD_MIN_LEN / PASSWORD_MAX_LEN 保持一致
 const PASSWORD_MIN_LEN = 8
 const PASSWORD_MAX_LEN = 128
-const PASSWORD_HELPER_TEXT = `${PASSWORD_MIN_LEN} ~ ${PASSWORD_MAX_LEN} 个字符`
+const PASSWORD_HELPER_TEXT = `密码长度为 ${PASSWORD_MIN_LEN} ~ ${PASSWORD_MAX_LEN} 个字符`
 
 function validatePassword(password: string): string | null {
   // 可见 ASCII：0x21..=0x7E，不含空格
@@ -228,6 +229,10 @@ export default function ConfigurationPage() {
   // 该项目既有的全局未登录处理会兜底跳转
   const [authRedirectCountdown, setAuthRedirectCountdown] = useState<number | null>(null)
 
+  const [debugPortProtection, setDebugPortProtection] = useState<boolean>(true)
+  const [securityLoading, setSecurityLoading] = useState(false)
+  const [securityConfirmOpen, setSecurityConfirmOpen] = useState(false)
+
   useEffect(() => {
     if (authRedirectCountdown === null) return
     if (authRedirectCountdown <= 0) {
@@ -264,13 +269,14 @@ export default function ConfigurationPage() {
     setError(null)
     
     try {
-      const [dataRes, usbRes, airplaneModeRes, webhookRes, smsPushRes, authRes] = await Promise.all([
+      const [dataRes, usbRes, airplaneModeRes, webhookRes, smsPushRes, authRes, securityRes] = await Promise.all([
         api.getDataStatus(),
         api.getUsbMode(),
         api.getAirplaneMode(),
         api.getWebhookConfig(),
         api.getSmsPushConfig(),
         api.getAuthConfig(),
+        api.getSecurityConfig(),
       ])
 
       if (dataRes.data) setDataStatus(dataRes.data.active)
@@ -282,6 +288,7 @@ export default function ConfigurationPage() {
       if (webhookRes.data) setWebhookConfig(webhookRes.data)
       if (smsPushRes.data) setSmsPushConfig(normalizeSmsPushConfig(smsPushRes.data))
       if (authRes.data) setAuthUsername(authRes.data.username)
+      if (securityRes.data) setDebugPortProtection(securityRes.data.vendor_debug_port_protection)
 
       // 加载健康检查
       await checkHealth()
@@ -575,6 +582,37 @@ export default function ConfigurationPage() {
     }
   }
 
+  const applySecurityConfig = async (protection: boolean) => {
+    setSecurityLoading(true)
+    setError(null)
+    try {
+      const response = await api.setSecurityConfig({ vendor_debug_port_protection: protection })
+      if (response.status === 'ok') {
+        setDebugPortProtection(protection)
+        setSuccess(protection ? '调试端口保护已开启' : '调试端口保护已关闭')
+      } else {
+        setError(response.message)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSecurityLoading(false)
+    }
+  }
+
+  const handleDebugPortProtectionToggle = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      void applySecurityConfig(true)
+    } else {
+      setSecurityConfirmOpen(true)
+    }
+  }
+
+  const handleDebugPortProtectionConfirm = () => {
+    setSecurityConfirmOpen(false)
+    void applySecurityConfig(false)
+  }
+
   const handleAddHeader = () => {
     if (newHeaderKey.trim() && newHeaderValue.trim()) {
       setWebhookConfig({
@@ -696,6 +734,17 @@ export default function ConfigurationPage() {
         loading={rebooting}
         onConfirm={handleRebootConfirm}
         onCancel={() => setRebootConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={securityConfirmOpen}
+        title="确认关闭调试端口保护"
+        content="关闭后，局域网内任何设备都可以直接访问 adbd（5555）、remote_mgr（8002-8004/8006）、engpc（10056/10057）等原厂调试端口，这些端口本身没有鉴权。确定关闭？"
+        confirmText="确认关闭"
+        confirmColor="error"
+        loading={securityLoading}
+        onConfirm={handleDebugPortProtectionConfirm}
+        onCancel={() => setSecurityConfirmOpen(false)}
       />
 
       <ErrorSnackbar error={error} onClose={() => setError(null)} />
@@ -1637,6 +1686,45 @@ export default function ConfigurationPage() {
                 </Button>
               </Box>
             )}
+          </AccordionDetails>
+        </Accordion>
+
+        {/* 调试端口保护 */}
+        <Accordion
+          expanded={expanded === 'security'}
+          onChange={handleAccordionChange('security')}
+        >
+          <AccordionSummary expandIcon={<ExpandMore />}>
+            <Box display="flex" alignItems="center" gap={1} width="100%">
+              <Shield color="primary" />
+              <Typography fontWeight={600}>调试端口保护</Typography>
+              <Box flexGrow={1} />
+              <Chip
+                label={debugPortProtection ? '已启用' : '未启用'}
+                color={debugPortProtection ? 'success' : 'default'}
+                size="small"
+                onClick={(e: MouseEvent) => e.stopPropagation()}
+              />
+            </Box>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Typography variant="body2" color="text.secondary" paragraph>
+              默认仅允许经回环接口访问原厂固件自带的工程调试端口（adbd 5555、remote_mgr
+              8002-8004/8006、engpc 10056/10057），这些端口本身没有鉴权。关闭后局域网内任何设备均可直接访问。
+            </Typography>
+
+            <Divider sx={{ my: 2 }} />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={debugPortProtection}
+                  onChange={handleDebugPortProtectionToggle}
+                  disabled={securityLoading}
+                />
+              }
+              label={debugPortProtection ? '已启用（推荐）' : '已关闭'}
+            />
           </AccordionDetails>
         </Accordion>
       </Box>

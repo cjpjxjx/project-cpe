@@ -769,4 +769,10 @@ export interface SetAuthConfigRequest {
   new_password?: string
 }
 
+// ============ 安全防护配置类型 ============
+
+export interface SecurityConfig {
+  vendor_debug_port_protection: boolean
+}
+
 
