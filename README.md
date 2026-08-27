@@ -292,6 +292,21 @@ AT+SPLBAND=2,0,0,0,0
 | `/api/webhook/config` | GET/POST | Webhook 配置管理 |
 | `/api/webhook/test` | POST | 测试 Webhook |
 
+### 短信推送配置
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/sms-push/config` | GET/POST | 短信推送配置管理 |
+| `/api/sms-push/test` | POST | 测试短信推送 |
+
+支持 PushPlus、Server酱 Turbo、PushDeer、Bark、ntfy、钉钉群机器人，标题与正文可用模板变量
+（`{{phone_number}}`、`{{content}}`、`{{timestamp}}`、`{{status}}` 等）自定义。
+
+钉钉群机器人填写机器人 Webhook 地址中的 `access_token`，并选择与钉钉侧一致的安全设置：
+
+- **加签**：额外填写 `SEC` 开头的密钥，后端按钉钉规范附加 `timestamp` 与 `sign` 参数；该校验要求设备时间与钉钉服务器相差在 1 小时以内。
+- **关键词 / IP 地址段**：请求不带签名，需在钉钉机器人的安全设置中配置自定义关键词（关键词必须出现在渲染后的推送文本中）或 IP 地址（段）白名单，否则推送会被钉钉拒绝。
+
 ### 安全防护配置
 
 | 接口 | 方法 | 说明 |

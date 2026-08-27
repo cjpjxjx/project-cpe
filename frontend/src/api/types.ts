@@ -675,7 +675,7 @@ export interface WebhookTestResponse {
 
 // ============ 短信推送配置类型 ============
 
-export type SmsPushProvider = 'pushplus' | 'serverchan' | 'pushdeer' | 'bark' | 'ntfy'
+export type SmsPushProvider = 'pushplus' | 'serverchan' | 'pushdeer' | 'bark' | 'ntfy' | 'dingtalk'
 
 export interface SmsPushConfig {
   enabled: boolean
@@ -683,6 +683,8 @@ export interface SmsPushConfig {
   credential: string
   server_url: string
   topic: string
+  sign_enabled: boolean
+  secret: string
   title_template: string
   body_template: string
 }

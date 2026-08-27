@@ -36,7 +36,7 @@
 - APN 管理、运营商扫描与注册、USB 网络模式切换（RNDIS/ECM/NCM）
 - 系统资源监控（CPU/温度/内存/磁盘）、系统重启
 - OTA 在线更新、开机自定义脚本（init.sh，可用于内核级网络调优等场景）
-- 短信转发到 Webhook（飞书等）或推送服务（PushPlus/Server 酱/PushDeer/Bark/ntfy）
+- 短信转发到 Webhook（飞书等）或推送服务（PushPlus/Server 酱/PushDeer/Bark/ntfy/钉钉群机器人）
 - AT 指令控制台、Web 终端（ttyd，独立进程，经后端反代访问）
 - 可选登录鉴权（默认关闭，Argon2 密码 + 内存 session）
 
@@ -125,7 +125,7 @@ README.md、CLAUDE.md 及代码注释遵守：
 ### 其它
 
 - **[scripts/](scripts/)** —— `build.sh`（交叉编译，支持 `--upx`）、`deploy.sh`（ADB 部署，支持 `--backend-only`/`--frontend-only`/`--no-restart`/`--target=`）、`pack-ota.sh`/`pack-userdata.sh`（打包）、`monitor.sh`、`setup-env.sh`（macOS 交叉编译环境配置）。
-- **[bruno-api/](bruno-api/)** —— Bruno API 测试集合（78 个 `.bru` 文件），须与后端路由保持同步（见"核心设计原则"第 7 条）。
+- **[bruno-api/](bruno-api/)** —— Bruno API 测试集合（83 个 `.bru` 文件），须与后端路由保持同步（见"核心设计原则"第 7 条）。
 - **[.github/workflows/build-ota.yml](.github/workflows/build-ota.yml)** —— 手动触发的 OTA 包构建 CI（交叉编译后端 + 构建前端 + 打包 + 校验三处版本号一致）；不作为 PR 门禁，不跑测试/lint。
 
 ## 运行时架构与原理

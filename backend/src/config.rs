@@ -90,6 +90,7 @@ pub enum SmsPushProvider {
     Pushdeer,
     Bark,
     Ntfy,
+    Dingtalk,
 }
 
 impl Default for SmsPushProvider {
@@ -110,6 +111,12 @@ pub struct SmsPushConfig {
     pub server_url: String,
     #[serde(default)]
     pub topic: String,
+    /// 安全设置是否为「加签」（当前仅钉钉机器人使用）
+    #[serde(default)]
+    pub sign_enabled: bool,
+    /// 加签密钥（当前仅钉钉机器人使用）
+    #[serde(default)]
+    pub secret: String,
     #[serde(default = "default_sms_push_title_template")]
     pub title_template: String,
     #[serde(default = "default_sms_push_body_template")]
@@ -132,6 +139,8 @@ impl Default for SmsPushConfig {
             credential: String::new(),
             server_url: String::new(),
             topic: String::new(),
+            sign_enabled: false,
+            secret: String::new(),
             title_template: default_sms_push_title_template(),
             body_template: default_sms_push_body_template(),
         }

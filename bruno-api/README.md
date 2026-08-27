@@ -150,6 +150,12 @@
 - **set_webhook_config.bru** - 设置 Webhook 配置
 - **test_webhook.bru** - 测试 Webhook 连接
 
+### 短信推送接口
+
+- **get_sms_push_config.bru** - 获取短信推送配置
+- **set_sms_push_config.bru** - 设置短信推送配置（示例为钉钉群机器人 + 加签）
+- **test_sms_push.bru** - 测试短信推送
+
 ### 安全防护接口
 
 - **get_security_config.bru** - 获取安全防护配置（调试端口保护开关）
@@ -241,6 +247,9 @@
 | GET | `/api/webhook/config` | 获取 Webhook 配置 |
 | POST | `/api/webhook/config` | 设置 Webhook 配置 |
 | POST | `/api/webhook/test` | 测试 Webhook 连接 |
+| GET | `/api/sms-push/config` | 获取短信推送配置 |
+| POST | `/api/sms-push/config` | 设置短信推送配置 |
+| POST | `/api/sms-push/test` | 测试短信推送 |
 | GET | `/api/security/config` | 获取安全防护配置（调试端口保护开关） |
 | POST | `/api/security/config` | 设置安全防护配置 |
 

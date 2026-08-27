@@ -77,6 +77,8 @@ interface SmsPushProviderOption {
   topicLabel?: string
   topicPlaceholder?: string
   topicRequired?: boolean
+  /** 是否提供「安全设置」(加签 / 关键词或 IP 白名单) 选项 */
+  supportsSign?: boolean
 }
 
 const SMS_PUSH_PROVIDER_OPTIONS: SmsPushProviderOption[] = [
@@ -127,6 +129,15 @@ const SMS_PUSH_PROVIDER_OPTIONS: SmsPushProviderOption[] = [
     topicPlaceholder: '输入 ntfy topic',
     topicRequired: true,
   },
+  {
+    value: 'dingtalk',
+    label: '钉钉群机器人',
+    defaultServerUrl: 'https://oapi.dingtalk.com/robot/send',
+    credentialLabel: 'Access Token',
+    credentialPlaceholder: '输入机器人 Webhook 地址中的 access_token',
+    credentialRequired: true,
+    supportsSign: true,
+  },
 ]
 
 function getSmsPushProviderOption(provider: SmsPushProvider): SmsPushProviderOption {
@@ -138,6 +149,8 @@ function normalizeSmsPushConfig(config: SmsPushConfig): SmsPushConfig {
   return {
     ...config,
     server_url: config.server_url || option.defaultServerUrl,
+    sign_enabled: option.supportsSign ? !!config.sign_enabled : false,
+    secret: option.supportsSign && config.sign_enabled ? (config.secret ?? '') : '',
   }
 }
 
@@ -148,6 +161,8 @@ function createDefaultSmsPushConfig(): SmsPushConfig {
     credential: '',
     server_url: '',
     topic: '',
+    sign_enabled: false,
+    secret: '',
     title_template: DEFAULT_SMS_PUSH_TITLE_TEMPLATE,
     body_template: DEFAULT_SMS_PUSH_BODY_TEMPLATE,
   })
@@ -648,6 +663,8 @@ export default function ConfigurationPage() {
           ? nextOption.defaultServerUrl
           : smsPushConfig.server_url,
       topic: nextOption.topicLabel ? smsPushConfig.topic : '',
+      sign_enabled: nextOption.supportsSign ? smsPushConfig.sign_enabled : false,
+      secret: nextOption.supportsSign ? smsPushConfig.secret : '',
     })
   }
 
@@ -703,6 +720,7 @@ export default function ConfigurationPage() {
   const smsPushCanTest = smsPushConfig.enabled
     && (!currentSmsPushProvider.credentialRequired || !!smsPushConfig.credential.trim())
     && (!currentSmsPushProvider.topicRequired || !!smsPushConfig.topic.trim())
+    && (!smsPushConfig.sign_enabled || !!smsPushConfig.secret.trim())
 
   if (loading) {
     return (
@@ -1483,6 +1501,51 @@ export default function ConfigurationPage() {
                     helperText={currentSmsPushProvider.topicRequired ? '当前服务必须填写主题' : '当前服务可留空'}
                   />
                 </Grid>
+              )}
+              {currentSmsPushProvider.supportsSign && (
+                <>
+                  <Grid size={{ xs: 12, md: smsPushConfig.sign_enabled ? 4 : 12 }}>
+                    <TextField
+                      fullWidth
+                      select
+                      label="安全设置"
+                      value={smsPushConfig.sign_enabled ? 'sign' : 'none'}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => setSmsPushConfig({
+                        ...smsPushConfig,
+                        sign_enabled: e.target.value === 'sign',
+                        secret: e.target.value === 'sign' ? smsPushConfig.secret : '',
+                      })}
+                      disabled={!smsPushConfig.enabled}
+                    >
+                      <MenuItem value="sign">加签</MenuItem>
+                      <MenuItem value="none">关键词 / IP 地址段</MenuItem>
+                    </TextField>
+                  </Grid>
+                  {smsPushConfig.sign_enabled && (
+                    <Grid size={{ xs: 12, md: 8 }}>
+                      <TextField
+                        fullWidth
+                        label="加签密钥"
+                        value={smsPushConfig.secret}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => setSmsPushConfig({ ...smsPushConfig, secret: e.target.value })}
+                        placeholder="输入钉钉机器人安全设置中的密钥 (SEC 开头)"
+                        disabled={!smsPushConfig.enabled}
+                        type="password"
+                        helperText="加签校验要求设备时间与钉钉服务器相差在 1 小时以内"
+                      />
+                    </Grid>
+                  )}
+                  {!smsPushConfig.sign_enabled && (
+                    <Grid size={{ xs: 12 }}>
+                      <Alert severity="warning">
+                        <Typography variant="body2">
+                          未选择加签时，必须在钉钉机器人的安全设置中配置<strong>自定义关键词</strong>或 <strong>IP 地址（段）</strong>白名单，否则推送会被钉钉拒绝。
+                          使用关键词时，关键词必须出现在下方标题或内容模板渲染后的文本中；使用 IP 白名单时，需填写本设备出口公网 IP。
+                        </Typography>
+                      </Alert>
+                    </Grid>
+                  )}
+                </>
               )}
             </Grid>
 

@@ -1,16 +1,22 @@
 //! 短信推送服务模块
 //!
-//! 为 PushPlus、Server酱 Turbo、PushDeer、Bark、ntfy 等轻量推送服务
-//! 提供统一的短信转发入口。
+//! 为 PushPlus、Server酱 Turbo、PushDeer、Bark、ntfy、钉钉群机器人等
+//! 轻量推送服务提供统一的短信转发入口。
 
 use std::sync::Arc;
 
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine;
 use chrono::Utc;
+use hmac::{Hmac, Mac};
 use reqwest::{Client, RequestBuilder, StatusCode};
 use serde_json::{json, Value};
+use sha2::Sha256;
 
 use crate::config::{ConfigManager, SmsPushConfig, SmsPushProvider};
 use crate::db::SmsMessage;
+
+const DINGTALK_DEFAULT_ENDPOINT: &str = "https://oapi.dingtalk.com/robot/send";
 
 pub struct SmsPushSender {
     client: Client,
@@ -113,6 +119,14 @@ fn validate_config(config: &SmsPushConfig) -> Result<(), String> {
                 return Err("ntfy 主题不能为空".to_string());
             }
         }
+        SmsPushProvider::Dingtalk => {
+            if credential.is_empty() {
+                return Err("钉钉机器人 access_token 不能为空".to_string());
+            }
+            if config.sign_enabled && config.secret.trim().is_empty() {
+                return Err("安全设置为加签时，加签密钥不能为空".to_string());
+            }
+        }
     }
 
     Ok(())
@@ -191,7 +205,41 @@ fn build_request(
 
             Ok(request)
         }
+        SmsPushProvider::Dingtalk => {
+            let endpoint = resolve_endpoint(&config.server_url, DINGTALK_DEFAULT_ENDPOINT);
+            let content = if title.is_empty() {
+                body.to_string()
+            } else if body.is_empty() {
+                title.to_string()
+            } else {
+                format!("{}\n{}", title, body)
+            };
+
+            let mut query: Vec<(&str, String)> = vec![("access_token", credential.to_string())];
+            if config.sign_enabled {
+                let timestamp = Utc::now().timestamp_millis().to_string();
+                let sign = dingtalk_sign(config.secret.trim(), &timestamp)?;
+                query.push(("timestamp", timestamp));
+                query.push(("sign", sign));
+            }
+
+            Ok(client
+                .post(endpoint)
+                .query(&query)
+                .json(&json!({
+                    "msgtype": "text",
+                    "text": { "content": content },
+                })))
+        }
     }
+}
+
+/// 钉钉群机器人加签: base64(HmacSHA256(timestamp + "\n" + secret, secret))
+fn dingtalk_sign(secret: &str, timestamp: &str) -> Result<String, String> {
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes())
+        .map_err(|_| "钉钉加签密钥无效".to_string())?;
+    mac.update(format!("{}\n{}", timestamp, secret).as_bytes());
+    Ok(BASE64_STANDARD.encode(mac.finalize().into_bytes()))
 }
 
 fn validate_provider_response(
@@ -229,6 +277,20 @@ fn validate_provider_response(
             if let Some(code) = value.get("code").and_then(Value::as_i64) {
                 if code != 0 && code != 200 {
                     return Err(extract_provider_error("推送服务返回失败", &value));
+                }
+            }
+        }
+        SmsPushProvider::Dingtalk => {
+            if let Some(errcode) = value.get("errcode").and_then(Value::as_i64) {
+                if errcode != 0 {
+                    let reason = value
+                        .get("errmsg")
+                        .and_then(Value::as_str)
+                        .unwrap_or("未知错误");
+                    return Err(format!(
+                        "钉钉机器人返回失败 (errcode: {}): {}",
+                        errcode, reason
+                    ));
                 }
             }
         }
@@ -295,5 +357,34 @@ fn format_body_suffix(body: &str) -> String {
         String::new()
     } else {
         format!(" ({})", preview)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dingtalk_sign_matches_reference() {
+        let sign = dingtalk_sign("SECabcdef", "1700000000000").unwrap();
+        assert_eq!(sign, "JISGksjyDysS1LOaD/BssnKBVXedPwjJ/s/DyTHUKMQ=");
+    }
+
+    #[test]
+    fn dingtalk_requires_credential_and_secret() {
+        let mut config = SmsPushConfig {
+            provider: SmsPushProvider::Dingtalk,
+            ..Default::default()
+        };
+        assert!(validate_config(&config).is_err());
+
+        config.credential = "token".to_string();
+        assert!(validate_config(&config).is_ok());
+
+        config.sign_enabled = true;
+        assert!(validate_config(&config).is_err());
+
+        config.secret = "SECabcdef".to_string();
+        assert!(validate_config(&config).is_ok());
     }
 }

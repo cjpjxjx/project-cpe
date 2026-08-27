@@ -1,0 +1,29 @@
+meta {
+  name: set_sms_push_config
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://192.168.66.1:3000/api/sms-push/config
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "enabled": true,
+    "provider": "dingtalk",
+    "credential": "your-dingtalk-access-token",
+    "server_url": "https://oapi.dingtalk.com/robot/send",
+    "topic": "",
+    "sign_enabled": true,
+    "secret": "SECyour-dingtalk-sign-secret",
+    "title_template": "短信通知 · {{phone_number}}",
+    "body_template": "时间: {{timestamp}}\n号码: {{phone_number}}\n状态: {{status}}\n\n{{content}}"
+  }
+}
+
+settings {
+  encodeUrl: true
+}
