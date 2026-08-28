@@ -89,6 +89,14 @@ export function DeviceInfoCard({ deviceInfo, systemStats }: DeviceInfoCardProps)
               {systemStats?.system_info?.release || '-'}
             </Typography>
           </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">
+              设备时间
+            </Typography>
+            <Typography variant="body2" fontSize="0.75rem" noWrap>
+              {systemStats?.device_time || '-'}
+            </Typography>
+          </Box>
         </Box>
       </CardContent>
     </Card>

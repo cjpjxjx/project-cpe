@@ -21,7 +21,6 @@ import {
   ListItemButton,
   Alert,
   CircularProgress,
-  Chip,
   IconButton,
   Dialog,
   DialogTitle,
@@ -75,11 +74,16 @@ export default function SMSPage() {
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null)
   const [conversationMessages, setConversationMessages] = useState<SmsMessage[]>([])
   const [conversationLoading, setConversationLoading] = useState(false)
-  
+
   // 聊天区域滚动引用
   const chatEndRef = useRef<HTMLDivElement>(null)
   // 输入框焦点状态 - 有焦点时暂停刷新避免失焦
   const inputFocusedRef = useRef(false)
+  // 当前选中对话的 ref，用于定时器回调中避免 stale closure
+  const selectedConversationRef = useRef<string | null>(null)
+  useEffect(() => {
+    selectedConversationRef.current = selectedConversation
+  }, [selectedConversation])
 
   // 滚动到底部
   const scrollToBottom = useCallback(() => {
@@ -141,7 +145,7 @@ export default function SMSPage() {
     try {
       const response = await api.getSmsConversation({ phone_number: phone })
       if (response.status === 'ok' && response.data) {
-        const sorted = [...response.data].sort((a, b) => 
+        const sorted = [...response.data].sort((a, b) =>
           new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
         )
         setConversationMessages(sorted)
@@ -149,7 +153,7 @@ export default function SMSPage() {
       }
     } catch {
       const localMsgs = messages.filter(m => m.phone_number === phone)
-      const sorted = [...localMsgs].sort((a, b) => 
+      const sorted = [...localMsgs].sort((a, b) =>
         new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
       )
       setConversationMessages(sorted)
@@ -158,6 +162,31 @@ export default function SMSPage() {
       setConversationLoading(false)
     }
   }, [messages, scrollToBottom])
+
+  // 后台静默刷新当前打开的对话（不显示加载动画，供定时器调用）
+  const refreshConversationBackground = useCallback(async (phone: string) => {
+    try {
+      const response = await api.getSmsConversation({ phone_number: phone })
+      if (response.status === 'ok' && response.data) {
+        const sorted = [...response.data].sort((a, b) =>
+          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        )
+        setConversationMessages(prev => {
+          const hasNew =
+            sorted.length > prev.length ||
+            (sorted.length > 0 && prev.length > 0 &&
+              sorted[sorted.length - 1].id !== prev[prev.length - 1].id)
+          if (hasNew) {
+            setTimeout(scrollToBottom, 100)
+            return sorted
+          }
+          return prev
+        })
+      }
+    } catch {
+      // 后台刷新失败静默忽略，不影响用户操作
+    }
+  }, [scrollToBottom])
 
   // 获取统计信息
   const fetchStats = useCallback(async () => {
@@ -185,9 +214,14 @@ export default function SMSPage() {
       }
       void fetchMessages()
       void fetchStats()
+      // 同步刷新当前打开的对话（后台静默，不显示加载动画）
+      const phone = selectedConversationRef.current
+      if (phone) {
+        void refreshConversationBackground(phone)
+      }
     }, refreshInterval)
     return () => window.clearInterval(interval)
-  }, [fetchMessages, fetchStats, refreshInterval, refreshKey])
+  }, [fetchMessages, fetchStats, refreshConversationBackground, refreshInterval, refreshKey])
 
   // 选择对话
   const handleSelectConversation = (phone: string) => {
@@ -434,6 +468,10 @@ export default function SMSPage() {
               >
                 <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, px: 0.5 }}>
                   {formatFullTime(msg.timestamp)}
+                  {msg.direction === 'outgoing' && msg.status === 'sent' && '（已发送）'}
+                  {msg.direction === 'outgoing' && msg.status === 'failed' && (
+                    <Box component="span" sx={{ color: 'error.main', ml: 0.5 }}>（发送失败）</Box>
+                  )}
                 </Typography>
                 <Paper
                   elevation={1}
@@ -454,17 +492,6 @@ export default function SMSPage() {
                   <Typography variant="body2" sx={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
                     {msg.content}
                   </Typography>
-                  {msg.direction === 'outgoing' && (
-                    msg.status === 'sent' ? (
-                      <Box display="flex" justifyContent="flex-end" mt={0.5}>
-                        <Chip label="已发送" size="small" sx={{ height: 16, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.2)' }} />
-                      </Box>
-                    ) : msg.status === 'failed' ? (
-                      <Box display="flex" justifyContent="flex-end" mt={0.5}>
-                        <Chip label="失败" size="small" color="error" sx={{ height: 16, fontSize: '0.65rem' }} />
-                      </Box>
-                    ) : null
-                  )}
                 </Paper>
               </Box>
             ))}

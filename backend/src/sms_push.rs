@@ -38,15 +38,15 @@ impl SmsPushSender {
         self.config_manager.get_sms_push()
     }
 
-    pub async fn forward_sms(&self, message: &SmsMessage) -> Result<(), String> {
+    pub async fn forward_sms(&self, message: &SmsMessage, own_number: &str) -> Result<(), String> {
         let config = self.get_config();
 
         if !config.enabled {
             return Ok(());
         }
 
-        let title = render_sms_push_template(&config.title_template, message);
-        let body = render_sms_push_template(&config.body_template, message);
+        let title = render_sms_push_template(&config.title_template, message, own_number);
+        let body = render_sms_push_template(&config.body_template, message, own_number);
 
         self.send_with_config(&config, &title, &body).await.map(|_| ())
     }
@@ -68,8 +68,8 @@ impl SmsPushSender {
             pdu: None,
         };
 
-        let title = render_sms_push_template(&config.title_template, &test_message);
-        let body = render_sms_push_template(&config.body_template, &test_message);
+        let title = render_sms_push_template(&config.title_template, &test_message, "+8613912345678");
+        let body = render_sms_push_template(&config.body_template, &test_message, "+8613912345678");
 
         self.send_with_config(&config, &title, &body).await
     }
@@ -311,8 +311,9 @@ fn extract_provider_error(prefix: &str, value: &Value) -> String {
     format!("{}: {}", prefix, message)
 }
 
-fn render_sms_push_template(template: &str, message: &SmsMessage) -> String {
+fn render_sms_push_template(template: &str, message: &SmsMessage, own_number: &str) -> String {
     template
+        .replace("{{own_number}}", own_number)
         .replace("{{id}}", &message.id.to_string())
         .replace("{{phone_number}}", &message.phone_number)
         .replace("{{content}}", &message.content)

@@ -43,15 +43,15 @@ impl WebhookSender {
     }
     
     /// 转发短信
-    pub async fn forward_sms(&self, message: &SmsMessage) -> Result<(), String> {
+    pub async fn forward_sms(&self, message: &SmsMessage, own_number: &str) -> Result<(), String> {
         let config = self.get_config();
-        
+
         if !config.enabled || !config.forward_sms || config.url.is_empty() {
             return Ok(());
         }
-        
+
         // 使用模板替换变量
-        let payload = render_sms_template(&config.sms_template, message);
+        let payload = render_sms_template(&config.sms_template, message, own_number);
         
         self.send_webhook_raw(&config, &payload).await
     }
@@ -123,7 +123,7 @@ impl WebhookSender {
             pdu: None,
         };
         
-        let payload = render_sms_template(&config.sms_template, &test_message);
+        let payload = render_sms_template(&config.sms_template, &test_message, "+8613912345678");
         
         let mut request = self.client.post(&config.url);
         
@@ -156,9 +156,10 @@ impl WebhookSender {
 }
 
 /// 渲染短信模板，替换变量
-/// 支持的变量：{{id}}, {{phone_number}}, {{content}}, {{direction}}, {{timestamp}}, {{status}}
-fn render_sms_template(template: &str, message: &SmsMessage) -> String {
+/// 支持的变量：{{id}}, {{own_number}}, {{phone_number}}, {{content}}, {{direction}}, {{timestamp}}, {{status}}
+fn render_sms_template(template: &str, message: &SmsMessage, own_number: &str) -> String {
     template
+        .replace("{{own_number}}", own_number)
         .replace("{{id}}", &message.id.to_string())
         .replace("{{phone_number}}", &message.phone_number)
         .replace("{{content}}", &escape_json_string(&message.content))

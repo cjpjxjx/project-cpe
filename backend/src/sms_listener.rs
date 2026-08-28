@@ -16,8 +16,11 @@
 //! https://github.com/1orz/project-cpe
 
 use crate::db::{Database, SmsMessage, CallRecord};
+use crate::dbus::get_subscriber_number;
+use crate::serial::with_serial;
 use crate::sms_push::SmsPushSender;
 use crate::webhook::WebhookSender;
+use chrono::Local;
 use std::sync::Arc;
 use zbus::{Connection, MessageStream, Proxy};
 use zbus::zvariant::OwnedValue;
@@ -217,15 +220,18 @@ pub async fn start_sms_listener(
 ) -> zbus::Result<()> {
     // Subscribe to D-Bus signals via proxy
     let dbus_proxy = Proxy::new(&conn, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus").await?;
-    
+
     // Only listen to IncomingMessage signal (ofono auto-assembles long SMS)
     // Note: MessagePDU is not monitored to avoid duplicate SMS notifications
     let rule = "type='signal',sender='org.ofono',interface='org.ofono.MessageManager',member='IncomingMessage'";
     dbus_proxy.call::<_, _, ()>("AddMatch", &(rule,)).await?;
-    
+
+    // 启动时查询本机号码，失败时退化为空字符串
+    let own_number = with_serial(get_subscriber_number(&conn)).await;
+
     // Create message stream
     let mut stream = MessageStream::from(&conn);
-    
+
     // Listen for signals
     loop {
         let msg = match stream.next().await {
@@ -233,7 +239,7 @@ pub async fn start_sms_listener(
             Some(Err(_)) => continue,
             None => continue,
         };
-        
+
         // Check if it's a signal message
         if let Some(member) = msg.header().member() {
             if member.as_str() == "IncomingMessage" {
@@ -244,7 +250,7 @@ pub async fn start_sms_listener(
                         .and_then(|v| v.downcast_ref::<zbus::zvariant::Str>().ok())
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| "Unknown".to_string());
-                    
+
                     // Store to database
                     if let Ok(id) = db.insert_sms("incoming", &sender, &content, "received", None) {
                         // Forward to webhook / SMS push
@@ -253,15 +259,16 @@ pub async fn start_sms_listener(
                             direction: "incoming".to_string(),
                             phone_number: sender,
                             content,
-                            timestamp: chrono::Utc::now().to_rfc3339(),
+                            timestamp: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
                             status: "received".to_string(),
                             pdu: None,
                         };
                         let webhook_clone = Arc::clone(&webhook);
                         let sms_push_clone = Arc::clone(&sms_push);
+                        let own_number_clone = own_number.clone();
                         tokio::spawn(async move {
-                            let _ = webhook_clone.forward_sms(&sms).await;
-                            let _ = sms_push_clone.forward_sms(&sms).await;
+                            let _ = webhook_clone.forward_sms(&sms, &own_number_clone).await;
+                            let _ = sms_push_clone.forward_sms(&sms, &own_number_clone).await;
                         });
                     }
                 }

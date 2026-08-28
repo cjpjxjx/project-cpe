@@ -39,7 +39,7 @@ import {
 import Grid from '@mui/material/Grid'
 import { api } from '../api'
 import ErrorSnackbar from '../components/ErrorSnackbar'
-import type { DeviceInfo, SimInfo, SimSlotResponse, ImeisvResponse } from '../api/types'
+import type { DeviceInfo, SimInfo, SimSlotResponse, ImeisvResponse, SystemStatsResponse } from '../api/types'
 
 export default function DeviceInfoPage() {
   const [loading, setLoading] = useState(true)
@@ -58,19 +58,22 @@ export default function DeviceInfoPage() {
   const [imeisv, setImeisv] = useState<ImeisvResponse | null>(null)
   const [simSlot, setSimSlot] = useState<SimSlotResponse | null>(null)
   const [switchingSlot, setSwitchingSlot] = useState(false)
+  const [systemStats, setSystemStats] = useState<SystemStatsResponse | null>(null)
 
   const loadData = async () => {
     setLoading(true)
     setError(null)
-    
+
     try {
-      const [deviceRes, simRes] = await Promise.all([
+      const [deviceRes, simRes, statsRes] = await Promise.all([
         api.getDeviceInfo(),
         api.getSimInfo(),
+        api.getSystemStats(),
       ])
-      
+
       if (deviceRes.data) setDeviceInfo(deviceRes.data)
       if (simRes.data) setSimInfo(simRes.data)
+      if (statsRes.data) setSystemStats(statsRes.data)
 
       // 加载扩展数据
       try {
@@ -202,6 +205,10 @@ export default function DeviceInfoPage() {
                           size="small"
                         />
                       </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell component="th">设备时间</TableCell>
+                      <TableCell>{systemStats?.device_time || 'N/A'}</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>

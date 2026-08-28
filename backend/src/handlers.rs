@@ -956,6 +956,7 @@ pub async fn get_system_stats() -> impl IntoResponse {
             system_info,
             temperature,
             usb_mode,
+            device_time: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         })
     }
     .await;

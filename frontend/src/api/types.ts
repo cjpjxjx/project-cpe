@@ -209,6 +209,7 @@ export interface SystemStatsResponse {
   system_info: SystemInfo
   temperature: ThermalZone[] // 温度传感器数据
   usb_mode: UsbModeResponse // USB 模式信息
+  device_time: string // 设备当前本地时间（如 "2026-08-28 15:04:05"）
 }
 
 // 磁盘/分区信息

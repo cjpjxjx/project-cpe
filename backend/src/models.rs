@@ -390,6 +390,8 @@ pub struct SystemStatsResponse {
     pub temperature: Vec<ThermalZone>,
     /// USB 模式信息
     pub usb_mode: UsbModeResponse,
+    /// 设备当前本地时间（如 "2026-08-28 15:04:05"）
+    pub device_time: String,
 }
 
 /// 磁盘/分区信息

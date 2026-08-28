@@ -1789,8 +1789,23 @@ pub async fn switch_sim_slot(conn: &Connection, slot: u8) -> zbus::Result<String
         
         let cmd = format!("AT+SPCONFIGSIMSLOT={}", value);
         let response: String = proxy.call("SendAtcmd", &(cmd.as_str())).await?;
-        
+
         Ok(response)
     }).await
+}
+
+/// 获取 SIM 卡本机号码（SubscriberNumbers 列表的第一个），失败时返回空字符串
+pub async fn get_subscriber_number(conn: &Connection) -> String {
+    let Ok(sim_proxy) = SimManagerProxy::new(conn).await else {
+        return String::new();
+    };
+    let Ok(props) = sim_proxy.get_properties().await else {
+        return String::new();
+    };
+    props
+        .get("SubscriberNumbers")
+        .and_then(|v| <Vec<String>>::try_from(v.clone()).ok())
+        .and_then(|nums| nums.into_iter().find(|s| !s.is_empty()))
+        .unwrap_or_default()
 }
 

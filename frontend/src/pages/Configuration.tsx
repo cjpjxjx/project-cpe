@@ -50,7 +50,7 @@ import {
   Add,
   PlayArrow,
   Security,
-  Shield,
+  Router,
 } from '@mui/icons-material'
 import { api, suppressUnauthorizedRedirect } from '../api'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -922,7 +922,7 @@ export default function ConfigurationPage() {
         >
           <AccordionSummary expandIcon={<ExpandMore />}>
             <Box display="flex" alignItems="center" gap={1} width="100%">
-              <FlightTakeoff color={airplaneMode?.enabled ? 'warning' : 'primary'} />
+              <FlightTakeoff color="primary" />
               <Typography fontWeight={600}>飞行模式</Typography>
               <Box flexGrow={1} />
               <Chip
@@ -1180,7 +1180,7 @@ export default function ConfigurationPage() {
         >
           <AccordionSummary expandIcon={<ExpandMore />}>
             <Box display="flex" alignItems="center" gap={1} width="100%">
-              <Webhook color={webhookConfig.enabled ? 'success' : 'primary'} />
+              <Webhook color="primary" />
               <Typography fontWeight={600}>Webhook 转发</Typography>
               <Box flexGrow={1} />
               <Chip
@@ -1410,7 +1410,7 @@ export default function ConfigurationPage() {
         >
           <AccordionSummary expandIcon={<ExpandMore />}>
             <Box display="flex" alignItems="center" gap={1} width="100%">
-              <Sms color={smsPushConfig.enabled ? 'success' : 'primary'} />
+              <Sms color="primary" />
               <Typography fontWeight={600}>短信推送服务</Typography>
               <Box flexGrow={1} />
               <Chip
@@ -1540,7 +1540,6 @@ export default function ConfigurationPage() {
                       <Alert severity="warning">
                         <Typography variant="body2">
                           未选择加签时，必须在钉钉机器人的安全设置中配置<strong>自定义关键词</strong>或 <strong>IP 地址（段）</strong>白名单，否则推送会被钉钉拒绝。
-                          使用关键词时，关键词必须出现在下方标题或内容模板渲染后的文本中；使用 IP 白名单时，需填写本设备出口公网 IP。
                         </Typography>
                       </Alert>
                     </Grid>
@@ -1552,6 +1551,7 @@ export default function ConfigurationPage() {
             <Alert severity="info" sx={{ mb: 2 }}>
               <Typography variant="body2">
                 <strong>支持的模板变量：</strong>{' '}
+                <code>{'{{own_number}}'}</code>（本机号码）,{' '}
                 <code>{'{{phone_number}}'}</code>, <code>{'{{content}}'}</code>, <code>{'{{timestamp}}'}</code>,
                 {' '}
                 <code>{'{{status}}'}</code>, <code>{'{{direction}}'}</code>
@@ -1759,7 +1759,7 @@ export default function ConfigurationPage() {
         >
           <AccordionSummary expandIcon={<ExpandMore />}>
             <Box display="flex" alignItems="center" gap={1} width="100%">
-              <Shield color="primary" />
+              <Router color="primary" />
               <Typography fontWeight={600}>调试端口保护</Typography>
               <Box flexGrow={1} />
               <Chip
